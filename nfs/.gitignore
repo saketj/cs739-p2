@@ -5,6 +5,11 @@ bins
 gens
 libs
 objs
+*.out
+*.o
+*.so
+*.pb.h
+*.pb.cc
 
 # Python items
 cython_debug/

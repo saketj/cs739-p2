@@ -43,7 +43,9 @@
 #include <errno.h>
 #include <fcntl.h>
 
-static const char *hello_str = "Hello World!\n";
+#include "nfs_grpc_client_wrapper.h"
+
+static const char *hello_str = "This local data will not be seen by client\n";
 static const char *hello_path = "/hello";
 
 static int hello_getattr(const char *path, struct stat *stbuf)
@@ -103,11 +105,13 @@ static int hello_read(const char *path, char *buf, size_t size, off_t offset,
 
 	len = strlen(hello_str);
 	if (offset < len) {
-		if (offset + size > len)
-			size = len - offset;
-		memcpy(buf, hello_str + offset, size);
-	} else
-		size = 0;
+	  char remote_buf[1024];
+	  remote_read(remote_buf, 1024); // RPC call to NFS
+	  size = strlen(remote_buf);
+	  memcpy(buf, remote_buf, size);
+	} else {
+	  size = 0;
+	}
 
 	return size;
 }

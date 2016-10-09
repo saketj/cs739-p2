@@ -37,122 +37,69 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstdio>
+#include <cstring>
 #include <vector>
 #include <algorithm>
 
 #include <grpc++/grpc++.h>
 
 #include "nfs.grpc.pb.h"
+#include "nfs_grpc_client_wrapper.h"
 
 using grpc::Channel;
 using grpc::ClientContext;
 using grpc::Status;
-using nfs::HelloRequest;
-using nfs::HelloReply;
-using nfs::Greeter;
-
+using nfs::NFS;
+using nfs::READargs;
+using nfs::READres;
 
 #define SERVER "localhost"
-#define BILLION 1000000000L
-#define NUM_ITERATIONS 10
-#define BUFFER_SIZE 64000
 
-class GreeterClient {
+class NFSClient {
  public:
-  GreeterClient(std::shared_ptr<Channel> channel)
-      : stub_(Greeter::NewStub(channel)) {}
+  NFSClient(std::shared_ptr<Channel> channel)
+      : stub_(NFS::NewStub(channel)) {}
 
   // Assambles the client's payload, sends it and presents the response back
   // from the server.
-  char SayHello(int *arr, int size) {
+  std::string NFSPROC_READ() {
     // Data we are sending to the server.
-    HelloRequest request;
-    for (int i = 0; i < size; ++i) {
-    	request.add_data(arr[i]);
-    }
-
+    READargs readArgs;
+    readArgs.set_nfs_fh("random:file:handle");
+    readArgs.set_offset(0);
+    readArgs.set_count(100);
 
     // Container for the data we expect from the server.
-    HelloReply reply;
+    READres readRes;
 
     // Context for the client. It could be used to convey extra information to
     // the server and/or tweak certain RPC behaviors.
     ClientContext context;
 
     // The actual RPC.
-    Status status = stub_->SayHello(&context, request, &reply);
+    Status status = stub_->NFSPROC_READ(&context, readArgs, &readRes);
 
     // Act upon its status.
     if (status.ok()) {
-      return reply.message();
+      return readRes.mutable_resok()->data();
     } else {
       std::cout << status.error_code() << ": " << status.error_message()
                 << std::endl;
-      return '0';
+      return "0";
     }
   }
 
  private:
-  std::unique_ptr<Greeter::Stub> stub_;
+  std::unique_ptr<NFS::Stub> stub_;
 };
 
-double findMedian(std::vector<uint64_t> &vec) {
-  std::sort(vec.begin(), vec.end());
-  int size = vec.size();
-  if (size % 2 == 0) {
-    double val = (double)(vec[size/2] + vec[size/2 + 1]) / (double)2.0f;
-    return val;
-  }
-  else {
-    return vec[size/2];
-  }
-}
-
-int main(int argc, char** argv) {
+void remote_read(char *buffer, int buffer_size) {
   // Instantiate the client. It requires a channel, out of which the actual RPCs
   // are created. This channel models a connection to an endpoint (in this case,
   // localhost at port 50051). We indicate that the channel isn't authenticated
   // (use of InsecureChannelCredentials()).
   std::string connection = std::string(SERVER) + ":50051";
-  GreeterClient greeter(grpc::CreateChannel(connection, grpc::InsecureChannelCredentials()));
-
-  uint64_t total_time = 0;
-  struct timespec start, end;
-  int size = 16000;
-  char message[BUFFER_SIZE];
-
-  if (argc < 2) {
-    printf("Incorrect invocation. Correct usage: ./client <file>\n");
-    exit(1);
-  }
-
-  char *filename = argv[1];
-  FILE *fp;
-
-  std::vector<uint64_t> results(NUM_ITERATIONS, 0);
-  for (int itr = 0; itr < NUM_ITERATIONS; ++itr) {
-    // Open the file
-    fp = fopen(filename, "rb");
-    if (fp == NULL) {
-      fprintf(stderr, "Can't open the input file!\n");
-      exit(1);
-    }
-    uint64_t iter_time = 0;
-    // Read and send the entire file, one buffer at a time
-    while (fread(message, 1, sizeof(message), fp) > 0) {
-      int *data = (int *) message;
-      int size = BUFFER_SIZE / 4;
-
-      clock_gettime(CLOCK_REALTIME, &start);/* mark start time */
-      char reply = greeter.SayHello(data, size);
-      clock_gettime(CLOCK_REALTIME, &end);/* mark end time */
-
-      iter_time += BILLION * (end.tv_sec - start.tv_sec) + end.tv_nsec - start.tv_nsec;
-    }
-    results[itr] = iter_time;
-    fclose(fp);
-  }
-  printf("Median time taken = %f nanoseconds for %s data.\n", findMedian(results), filename);
-
-  return 0;
+  NFSClient nfs_client(grpc::CreateChannel(connection, grpc::InsecureChannelCredentials()));
+  std::string reply = nfs_client.NFSPROC_READ();
+  strncpy(buffer, reply.c_str(), buffer_size);
 }

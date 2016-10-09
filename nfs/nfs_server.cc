@@ -43,24 +43,24 @@ using grpc::Server;
 using grpc::ServerBuilder;
 using grpc::ServerContext;
 using grpc::Status;
-using nfs::HelloRequest;
-using nfs::HelloReply;
-using nfs::Greeter;
+using nfs::NFS;
+using nfs::READargs;
+using nfs::READres;
+using nfs::READres;
+using nfs::READresok;
+using nfs::READresfail;
 
-// Logic and data behind the server's behavior.
-class GreeterServiceImpl final : public Greeter::Service {
-  Status SayHello(ServerContext* context, const HelloRequest* request,
-                  HelloReply* reply) override {
-    char data = 'z';
-    reply->set_message(data);
+class NFSServiceImpl final : public NFS::Service {
+  Status NFSPROC_READ(ServerContext* context, const READargs* readArgs,
+		      READres* readRes) override {
+    readRes->mutable_resok()->set_data("NFS Server: NFSPROC_READ Reply\n");
     return Status::OK;
   }
 };
 
 void RunServer() {
   std::string server_address("0.0.0.0:50051");
-  GreeterServiceImpl service;
-
+  NFSServiceImpl service;
   ServerBuilder builder;
   // Listen on the given address without any authentication mechanism.
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());

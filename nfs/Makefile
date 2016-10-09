@@ -32,12 +32,12 @@
 FUSE_PATH = ../fuse-3.0.0pre0
 CC = gcc
 CXX = g++
-CFLAGS += -DHAVE_CONFIG_H -I$(FUSE_PATH)/include -Wall -g -O3
-CPPFLAGS += `pkg-config --cflags protobuf grpc`
-CXXFLAGS += -std=c++11 -O3 -g
+CFLAGS += -DHAVE_CONFIG_H -I$(FUSE_PATH)/include -I. -Wall -g -O3
+CXXFLAGS += -std=c++11 -O3 -g `pkg-config --cflags protobuf grpc`
 LDFLAGS += -L/usr/local/lib `pkg-config --libs grpc++ grpc`       \
            -Wl,--no-as-needed -lgrpc++_reflection -Wl,--as-needed \
            -lprotobuf -lpthread -ldl
+SHARED_GRPC_LDFLAGS += -lnfs.grpc.client -L. -Wl,-rpath=.
 PROTOC = protoc
 GRPC_CPP_PLUGIN = grpc_cpp_plugin
 GRPC_CPP_PLUGIN_PATH ?= `which $(GRPC_CPP_PLUGIN)`
@@ -49,19 +49,19 @@ PROTOS_PATH = ./
 
 vpath %.proto $(PROTOS_PATH)
 
-all: system-check nfs_server.out nfs_fuse_client.o nfs_grpc_client.o nfs_client.out
+all: system-check nfs_server.out libnfs.grpc.client.so nfs.fuse.client.o nfs_client.out
 
 nfs_server.out: nfs.pb.o nfs.grpc.pb.o nfs_server.o
-	$(CXX) $^ $(LDFLAGS) -o $@
+	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -o $@
 
-nfs_grpc_client.o: nfs.pb.cc nfs.grpc.pb.cc nfs_grpc_client.cc
-	$(CXX) $(CPPFLAGS) -c -o $@ $<
+libnfs.grpc.client.so: nfs.pb.cc nfs.grpc.pb.cc nfs_grpc_client.cc nfs_grpc_client_wrapper.h
+	$(CXX) $(CXXFLAGS) $^ $(LDFLAGS) -shared -fpic -o $@
 
-nfs_fuse_client.o: nfs_fuse_client.c
+nfs.fuse.client.o: nfs_fuse_client.c nfs_grpc_client_wrapper.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-nfs_client.out: nfs_fuse_client.o nfs_grpc_client.o
-	$(LIBTOOL) $(LIBTOOLFLAGS) $(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ $(FUSELIB)
+nfs_client.out: nfs.fuse.client.o
+	$(LIBTOOL) $(LIBTOOLFLAGS) $(CXX) $(CXXFLAGS) $^ $(LDFLAGS) $(SHARED_GRPC_LDFLAGS) -o $@ $(FUSELIB)
 
 .PRECIOUS: %.grpc.pb.cc
 %.grpc.pb.cc: %.proto
@@ -72,7 +72,7 @@ nfs_client.out: nfs_fuse_client.o nfs_grpc_client.o
 	$(PROTOC) -I $(PROTOS_PATH) --cpp_out=. $<
 
 clean:
-	rm -f *.o *.pb.cc *.pb.h nfs_client.out nfs_server.out nfs_fuse_client.out
+	rm -f *.o *.so *.out *.pb.cc *.pb.h
 
 
 # The following is to test your system and ensure a smoother experience.
