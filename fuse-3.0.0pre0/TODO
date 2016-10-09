@@ -1,0 +1,14 @@
+RELEASES release candidate! :-)
+
+
+I think it would be better to merge struct fuse_chan into struct
+fuse_session (because there is always exactly one channel object
+associated with one session object with pointers in both directions),
+and then use a reduced struct fuse_chan only for the additional
+channels created by fuse_loop_mt (in particular, remove the session
+reference which is always null anyway).
+
+This would also allow us to remove the fuse_session_add_chan and
+fuse_session_remove_chan functions which are rather pointless, since
+there is only ever one channel per session - so we may just as well
+create and destroy the channel together with the session.
