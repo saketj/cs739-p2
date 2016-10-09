@@ -29,10 +29,10 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-FUSE_PATH = ../fuse-3.0.0pre0
+FUSE_PATH = ../fuse-2.9.7
 CC = gcc
 CXX = g++
-CFLAGS += -DHAVE_CONFIG_H -I$(FUSE_PATH)/include -I. -Wall -g -O3
+CFLAGS += -DHAVE_CONFIG_H -D_FILE_OFFSET_BITS=64 -I$(FUSE_PATH)/include -I. -Wall -g -O3
 CXXFLAGS += -std=c++11 -O3 -g `pkg-config --cflags protobuf grpc`
 LDFLAGS += -L/usr/local/lib `pkg-config --libs grpc++ grpc`       \
            -Wl,--no-as-needed -lgrpc++_reflection -Wl,--as-needed \
@@ -43,7 +43,7 @@ GRPC_CPP_PLUGIN = grpc_cpp_plugin
 GRPC_CPP_PLUGIN_PATH ?= `which $(GRPC_CPP_PLUGIN)`
 LIBTOOL =  $(FUSE_PATH)/libtool
 LIBTOOLFLAGS = --silent --mode=link
-FUSELIB = $(FUSE_PATH)/lib/libfuse3.la
+FUSELIB = $(FUSE_PATH)/lib/libfuse.la $(FUSE_PATH)/lib/libulockmgr.la
 
 PROTOS_PATH = ./
 

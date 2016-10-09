@@ -2,7 +2,7 @@
 extern "C" {
 #endif
 
-  void remote_read(char *buffer, int buffer_size);
+  int remote_read(char *buffer, int buffer_size);
 
 #ifdef __cplusplus
 }

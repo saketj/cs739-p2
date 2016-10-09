@@ -93,7 +93,7 @@ class NFSClient {
   std::unique_ptr<NFS::Stub> stub_;
 };
 
-void remote_read(char *buffer, int buffer_size) {
+int remote_read(char *buffer, int buffer_size) {
   // Instantiate the client. It requires a channel, out of which the actual RPCs
   // are created. This channel models a connection to an endpoint (in this case,
   // localhost at port 50051). We indicate that the channel isn't authenticated
@@ -102,4 +102,5 @@ void remote_read(char *buffer, int buffer_size) {
   NFSClient nfs_client(grpc::CreateChannel(connection, grpc::InsecureChannelCredentials()));
   std::string reply = nfs_client.NFSPROC_READ();
   strncpy(buffer, reply.c_str(), buffer_size);
+  return reply.size();
 }
