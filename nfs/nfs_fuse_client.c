@@ -261,7 +261,7 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
 	close(fd);
 	*/
        
-	res = remote_read(buf, size); // RPC call to NFS
+	res = remote_read(path, buf, size, offset); // RPC call to NFS
 	if (res == -1) {
 	  res = -errno;
 	}	

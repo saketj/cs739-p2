@@ -38,6 +38,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
+#include <cstddef>
 #include <vector>
 #include <algorithm>
 
@@ -62,12 +63,12 @@ class NFSClient {
 
   // Assambles the client's payload, sends it and presents the response back
   // from the server.
-  std::string NFSPROC_READ() {
+  int NFSPROC_READ(const char *path, char *buf, size_t buf_size, size_t offset) {
     // Data we are sending to the server.
     READargs readArgs;
-    readArgs.mutable_file()->set_data("random:file:handle");
-    readArgs.set_offset(0);
-    readArgs.set_count(100);
+    readArgs.mutable_file()->set_data(path);
+    readArgs.set_offset(offset);
+    readArgs.set_count(buf_size);
 
     // Container for the data we expect from the server.
     READres readRes;
@@ -80,12 +81,15 @@ class NFSClient {
     Status status = stub_->NFSPROC_READ(&context, readArgs, &readRes);
 
     // Act upon its status.
-    if (status.ok()) {
-      return readRes.mutable_resok()->data();
+    if (status.ok() && readRes.has_resok()) {
+      std::string data = readRes.mutable_resok()->data();
+      std::size_t data_size = readRes.mutable_resok()->count();
+      strncpy(buf, data.c_str(), data_size);
+      return data_size;
     } else {
       std::cout << status.error_code() << ": " << status.error_message()
                 << std::endl;
-      return "0";
+      return -1;
     }
   }
 
@@ -93,14 +97,18 @@ class NFSClient {
   std::unique_ptr<NFS::Stub> stub_;
 };
 
-int remote_read(char *buffer, int buffer_size) {
+NFSClient* getNFSClient() {
   // Instantiate the client. It requires a channel, out of which the actual RPCs
   // are created. This channel models a connection to an endpoint (in this case,
   // localhost at port 50051). We indicate that the channel isn't authenticated
   // (use of InsecureChannelCredentials()).
-  std::string connection = std::string(SERVER) + ":50051";
-  NFSClient nfs_client(grpc::CreateChannel(connection, grpc::InsecureChannelCredentials()));
-  std::string reply = nfs_client.NFSPROC_READ();
-  strncpy(buffer, reply.c_str(), buffer_size);
-  return reply.size();
+  std::string connection = std::string(SERVER) + ":50051";  
+  std::unique_ptr<NFSClient> nfs_client(new NFSClient(grpc::CreateChannel(connection, grpc::InsecureChannelCredentials())));
+  return nfs_client.release();
+}
+
+int remote_read(const char *path, char *buffer, size_t buffer_size, size_t offset) {
+  std::unique_ptr<NFSClient> nfs_client(getNFSClient());
+  int buffer_read = nfs_client->NFSPROC_READ(path, buffer, buffer_size, offset);
+  return buffer_read;
 }

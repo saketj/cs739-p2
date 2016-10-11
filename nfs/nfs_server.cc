@@ -31,6 +31,7 @@
  *
  */
 
+#include <cstdio>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -39,22 +40,42 @@
 
 #include "nfs.grpc.pb.h"
 
+#define SERVER_DATA_DIR "/tmp/nfs_server"
+
 using grpc::Server;
 using grpc::ServerBuilder;
 using grpc::ServerContext;
 using grpc::Status;
 using nfs::NFS;
+using nfs::nfs_fh;
 using nfs::READargs;
 using nfs::READres;
 using nfs::READres;
 using nfs::READresok;
 using nfs::READresfail;
 
+const std::string* getServerPath(nfs_fh file_handle) {
+  std::unique_ptr<std::string> server_path(new std::string(std::string(SERVER_DATA_DIR) + file_handle.data()));
+  return server_path.release();
+}
+
+
 class NFSServiceImpl final : public NFS::Service {
   Status NFSPROC_READ(ServerContext* context, const READargs* readArgs,
 		      READres* readRes) override {
-    readRes->mutable_resok()->set_data("NFS Server: NFSPROC_READ Reply\n");
-    return Status::OK;
+    std::unique_ptr<const std::string> server_path(getServerPath(readArgs->file()));
+    FILE *file = fopen(server_path->c_str(), "rb");
+    if (file == nullptr) {
+      readRes->mutable_resfail();
+      return Status::OK;
+    } else {
+      fseek(file, readArgs->offset(), SEEK_SET);
+      std::unique_ptr<char> buf(new char[readArgs->count()]);
+      size_t bytes_read = fread(buf.get(), 1, readArgs->count(), file);
+      readRes->mutable_resok()->set_data(buf.get());
+      readRes->mutable_resok()->set_count(bytes_read);
+      return Status::OK;
+    }
   }
 };
 
