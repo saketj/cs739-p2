@@ -65,7 +65,7 @@ class NFSClient {
   std::string NFSPROC_READ() {
     // Data we are sending to the server.
     READargs readArgs;
-    readArgs.set_nfs_fh("random:file:handle");
+    readArgs.mutable_file()->set_data("random:file:handle");
     readArgs.set_offset(0);
     readArgs.set_count(100);
 
