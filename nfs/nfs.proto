@@ -7,6 +7,8 @@ package nfs;
 // The service definitions.
 service NFS {
   rpc NFSPROC_READ(READargs) returns (READres) {}
+  rpc NFSPROC_MKDIR(MKDIRargs) returns (MKDIRres) {}
+  rpc NFSPROC_RMDIR(RMDIRargs) returns (RMDIRres) {}
 }
 
 // The message definitions.
@@ -57,3 +59,106 @@ message READres {
     READresfail resfail = 2;
   }
 }
+
+message  lset_mode {
+    uint32 mode = 1; 
+}
+
+message lset_uid {
+   uint32 uid = 1; 
+}
+
+message lset_gid {
+   uint32 gid = 1; 
+}
+
+message lset_size {
+   uint64 size = 1; 
+}
+
+message nfstime {
+	uint32 seconds = 1; 
+	uint32 nseconds = 2; 
+}
+message lset_time {
+	nfstime time = 1; 
+}
+
+message sattr {
+	lset_mode mode = 1; 
+	lset_uid uid = 2; 
+	lset_gid gid = 3;
+        lset_size size = 4;
+        lset_time atime = 5;
+        lset_time mtime = 6;
+}
+
+message diropargs {
+	nfs_fh dir = 1;
+	string filename = 2; 
+}
+message MKDIRargs {
+	diropargs where = 1;
+	sattr attributes = 2; 
+}
+
+message post_op_fh {
+	nfs_fh handle = 1; 
+}
+
+message post_op_attr {
+	fattr attributes = 1; 
+}
+
+message wcc_attr {
+	uint64 size = 1; 
+	nfstime mtime = 2;
+	nfstime ctime = 3; 
+}
+
+message pre_op_attr {
+	wcc_attr attributes = 1; 
+}
+
+message wcc_data {
+	pre_op_attr before = 1; 
+	post_op_attr after = 2;
+}
+
+message MKDIRresok {
+	post_op_fh   obj = 1;
+        post_op_attr  obj_attributes = 2;
+        wcc_data      dir_wcc = 3;
+}
+
+message MKDIRresfail {
+       wcc_data      dir_wcc = 1;
+}
+
+message MKDIRres {
+  oneof MKDIRrestype {
+    MKDIRresok   resok = 1;
+    MKDIRresfail resfail = 2;
+  }
+}
+
+message RMDIRargs {
+	diropargs  object = 1;
+}
+
+message RMDIRresok {
+           wcc_data    dir_wcc = 1;
+} 
+
+message RMDIRresfail {
+           wcc_data    dir_wcc = 1;
+}
+
+message RMDIRres {
+  oneof RMDIRrestype {
+    RMDIRresok   resok = 1;
+    RMDIRresfail resfail = 2;
+  }
+}
+
+
