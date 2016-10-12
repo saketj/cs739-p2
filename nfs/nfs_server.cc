@@ -35,6 +35,10 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include <grpc++/grpc++.h>
 
@@ -67,17 +71,16 @@ class NFSServiceImpl final : public NFS::Service {
   Status NFSPROC_READ(ServerContext* context, const READargs* readArgs,
 		      READres* readRes) override {
     std::unique_ptr<const std::string> server_path(getServerPath(readArgs->file()));
-    FILE *file = fopen(server_path->c_str(), "rb");
-    if (file == nullptr) {
+    int fd = open(server_path->c_str(), O_RDONLY);
+    if (fd == -1) {
       readRes->mutable_resfail();
       return Status::OK;
     } else {
-      fseek(file, readArgs->offset(), SEEK_SET);
       std::unique_ptr<char> buf(new char[readArgs->count()]);
-      size_t bytes_read = fread(buf.get(), sizeof(char), readArgs->count(), file);
+      size_t bytes_read = pread(fd, buf.get(), readArgs->count(), readArgs->offset());
       readRes->mutable_resok()->set_data(buf.get());
       readRes->mutable_resok()->set_count(bytes_read);
-      fclose(file);
+      close(fd);
       return Status::OK;
     }
   }
@@ -85,19 +88,15 @@ class NFSServiceImpl final : public NFS::Service {
   Status NFSPROC_WRITE(ServerContext* context, const WRITEargs* writeArgs,
 		       WRITEres* readRes) override {
     std::unique_ptr<const std::string> server_path(getServerPath(writeArgs->file()));
-    FILE *file = fopen(server_path->c_str(), "r+b");
-    std::cout<<"Initiating write..."<<std::endl;
-    if (file == nullptr) {
-      std::cout<<*server_path<<std::endl;
+    int fd = open(server_path->c_str(), O_WRONLY);
+    if (fd == -1) {
       readRes->mutable_resfail();
       return Status::OK;
     } else {
-      std::cout<<"Data to write: "<<writeArgs<<std::endl;
-      fseek(file, writeArgs->offset(), SEEK_SET);
       const char *buf = writeArgs->data().c_str();
-      size_t bytes_written = fwrite(buf, sizeof(char), writeArgs->count(), file);
+      size_t bytes_written = pwrite(fd, buf, writeArgs->count(), writeArgs->offset());
       readRes->mutable_resok()->set_count(bytes_written);
-      fclose(file);
+      close(fd);
       return Status::OK;
     }
   }
