@@ -53,6 +53,8 @@ using grpc::Status;
 using nfs::NFS;
 using nfs::READargs;
 using nfs::READres;
+using nfs::WRITEargs;
+using nfs::WRITEres;
 
 #define SERVER "localhost"
 
@@ -93,6 +95,35 @@ class NFSClient {
     }
   }
 
+  int NFSPROC_WRITE(const char *path, const char *buf, size_t buf_size, size_t offset) {
+    // Data we are sending to the server.
+    WRITEargs writeArgs;
+    writeArgs.mutable_file()->set_data(path);
+    writeArgs.set_offset(offset);
+    writeArgs.set_count(buf_size);
+    writeArgs.set_data(buf);
+
+    // Container for the data we expect from the server.
+    WRITEres writeRes;
+
+    // Context for the client. It could be used to convey extra information to
+    // the server and/or tweak certain RPC behaviors.
+    ClientContext context;
+
+    // The actual RPC.
+    Status status = stub_->NFSPROC_WRITE(&context, writeArgs, &writeRes);
+
+    // Act upon its status.
+    if (status.ok() && writeRes.has_resok()) {
+      std::size_t data_size = writeRes.mutable_resok()->count();      
+      return data_size;
+    } else {
+      std::cout << status.error_code() << ": " << status.error_message()
+                << std::endl;
+      return -1;
+    }
+  }
+
  private:
   std::unique_ptr<NFS::Stub> stub_;
 };
@@ -111,4 +142,10 @@ int remote_read(const char *path, char *buffer, size_t buffer_size, size_t offse
   std::unique_ptr<NFSClient> nfs_client(getNFSClient());
   int buffer_read = nfs_client->NFSPROC_READ(path, buffer, buffer_size, offset);
   return buffer_read;
+}
+
+int remote_write(const char *path, const char *buffer, const size_t buffer_size, const size_t offset) {
+  std::unique_ptr<NFSClient> nfs_client(getNFSClient());
+  int buffer_written = nfs_client->NFSPROC_WRITE(path, buffer, buffer_size, offset);
+  return buffer_written;
 }

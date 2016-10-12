@@ -6,9 +6,11 @@ package nfs;
 
 // The service definitions.
 service NFS {
-  rpc NFSPROC_READ(READargs) returns (READres) {}
   rpc NFSPROC_MKDIR(MKDIRargs) returns (MKDIRres) {}
   rpc NFSPROC_RMDIR(RMDIRargs) returns (RMDIRres) {}
+
+  rpc NFSPROC_READ(READargs) returns (READres) {}
+  rpc NFSPROC_WRITE(WRITEargs) returns (WRITEres) {}
 }
 
 // The message definitions.
@@ -46,7 +48,7 @@ message READresok {
   fattr   file_attributes = 1; // fattr directly used instead of post_op_attr.
   uint64  count = 2;
   bool    eof = 3;
-  string  data = 4;
+  bytes  data = 4;
 }
 
 message READresfail {
@@ -97,6 +99,7 @@ message diropargs {
 	nfs_fh dir = 1;
 	string filename = 2; 
 }
+
 message MKDIRargs {
 	diropargs where = 1;
 	sattr attributes = 2; 
@@ -161,4 +164,39 @@ message RMDIRres {
   }
 }
 
+message WRITEargs {
+  nfs_fh file = 1;
+  uint64 offset = 2;
+  uint64 count = 3;
+  enum stable_how {
+    UNSTABLE = 0;
+    DATA_SYNC = 1;
+    FILE_SYNC = 2;
+  };
+  stable_how stable = 4;
+  bytes data = 5;
+}
+
+message WRITEresok {
+  wcc_data file_wcc = 1;
+  uint64 count = 2;
+  enum stable_how {
+    UNSTABLE = 0;
+    DATA_SYNC = 1;
+    FILE_SYNC = 2;
+  };
+  stable_how committed = 3;
+  string verf = 4;
+}
+
+message WRITEresfail {
+  wcc_data file_wcc = 1;
+}
+
+message WRITEres {
+  oneof WRITErestype {
+    WRITEresok   resok = 1;
+    WRITEresfail resfail = 2;
+  }
+}
 

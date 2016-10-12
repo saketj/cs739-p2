@@ -271,11 +271,11 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
 static int xmp_write(const char *path, const char *buf, size_t size,
 		     off_t offset, struct fuse_file_info *fi)
 {
-	int fd;
 	int res;
 
 	(void) fi;
-	fd = open(path, O_WRONLY);
+	/*
+	int fd = open(path, O_WRONLY);
 	if (fd == -1)
 		return -errno;
 
@@ -284,6 +284,9 @@ static int xmp_write(const char *path, const char *buf, size_t size,
 		res = -errno;
 
 	close(fd);
+	*/
+	res = remote_write(path, buf, size, offset);
+	printf("write res = %d\n", res);
 	return res;
 }
 

@@ -50,9 +50,12 @@ using nfs::NFS;
 using nfs::nfs_fh;
 using nfs::READargs;
 using nfs::READres;
-using nfs::READres;
 using nfs::READresok;
 using nfs::READresfail;
+using nfs::WRITEargs;
+using nfs::WRITEres;
+using nfs::WRITEresok;
+using nfs::WRITEresfail;
 
 const std::string* getServerPath(nfs_fh file_handle) {
   std::unique_ptr<std::string> server_path(new std::string(std::string(SERVER_DATA_DIR) + file_handle.data()));
@@ -71,9 +74,30 @@ class NFSServiceImpl final : public NFS::Service {
     } else {
       fseek(file, readArgs->offset(), SEEK_SET);
       std::unique_ptr<char> buf(new char[readArgs->count()]);
-      size_t bytes_read = fread(buf.get(), 1, readArgs->count(), file);
+      size_t bytes_read = fread(buf.get(), sizeof(char), readArgs->count(), file);
       readRes->mutable_resok()->set_data(buf.get());
       readRes->mutable_resok()->set_count(bytes_read);
+      fclose(file);
+      return Status::OK;
+    }
+  }
+
+  Status NFSPROC_WRITE(ServerContext* context, const WRITEargs* writeArgs,
+		       WRITEres* readRes) override {
+    std::unique_ptr<const std::string> server_path(getServerPath(writeArgs->file()));
+    FILE *file = fopen(server_path->c_str(), "r+b");
+    std::cout<<"Initiating write..."<<std::endl;
+    if (file == nullptr) {
+      std::cout<<*server_path<<std::endl;
+      readRes->mutable_resfail();
+      return Status::OK;
+    } else {
+      std::cout<<"Data to write: "<<writeArgs<<std::endl;
+      fseek(file, writeArgs->offset(), SEEK_SET);
+      const char *buf = writeArgs->data().c_str();
+      size_t bytes_written = fwrite(buf, sizeof(char), writeArgs->count(), file);
+      readRes->mutable_resok()->set_count(bytes_written);
+      fclose(file);
       return Status::OK;
     }
   }
