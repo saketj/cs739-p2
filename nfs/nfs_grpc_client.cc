@@ -26,6 +26,8 @@ using nfs::NFS;
 using nfs::fattr;
 using nfs::GETATTRargs;
 using nfs::GETATTRres;
+using nfs::SETATTRargs;
+using nfs::SETATTRres;
 using nfs::READargs;
 using nfs::READres;
 using nfs::WRITEargs;
@@ -73,7 +75,32 @@ class NFSClient {
       return -1;
     }
   }
+  
+  int NFSPROC_SETATTR(const char *path, size_t size) {
+    // Data we are sending to the server.
+    SETATTRargs setAttrArgs;
+    setAttrArgs.mutable_object()->set_data(path);
+    setAttrArgs.mutable_new_attributes()->set_size(size);
 
+    // Container for the data we expect from the server.
+    SETATTRres setAttrRes;
+
+    // Context for the client. It could be used to convey extra information to
+    // the server and/or tweak certain RPC behaviors.
+    ClientContext context;
+
+    // The actual RPC.
+    Status status = stub_->NFSPROC_SETATTR(&context, setAttrArgs, &setAttrRes);
+
+    // Act upon its status.
+    if (status.ok() && setAttrRes.has_resok()) {
+      return 0;
+    } else {
+      std::cout << status.error_code() << ": " << status.error_message()
+                << std::endl;
+      return -1;
+    }
+  }
 
   // Assambles the client's payload, sends it and presents the response back
   // from the server.
@@ -153,6 +180,12 @@ NFSClient* getNFSClient() {
 int remote_getattr(const char *path, struct stat *stbuf) {
   std::unique_ptr<NFSClient> nfs_client(getNFSClient());
   int res = nfs_client->NFSPROC_GETATTR(path, stbuf);
+  return res;
+}
+
+int remote_setattr(const char *path, size_t size) {
+  std::unique_ptr<NFSClient> nfs_client(getNFSClient());
+  int res = nfs_client->NFSPROC_SETATTR(path, size);
   return res;
 }
 

@@ -209,7 +209,8 @@ static int xmp_truncate(const char *path, off_t size)
 {
 	int res;
 
-	res = truncate(path, size);
+	// res = truncate(path, size);
+	res = remote_setattr(path, size);
 	if (res == -1)
 		return -errno;
 

@@ -9,7 +9,7 @@ service NFS {
   rpc NFSPROC_MKDIR(MKDIRargs) returns (MKDIRres) {}
   rpc NFSPROC_RMDIR(RMDIRargs) returns (RMDIRres) {}
   
-  // rpc NFSPROC_SETATTR(SETATTRargs) returns (SETATTRres) {}
+  rpc NFSPROC_SETATTR(SETATTRargs) returns (SETATTRres) {}
   rpc NFSPROC_GETATTR(GETATTRargs) returns (GETATTRres) {}
   rpc NFSPROC_READ(READargs) returns (READres) {}
   rpc NFSPROC_WRITE(WRITEargs) returns (WRITEres) {}
@@ -76,10 +76,6 @@ message lset_gid {
    uint32 gid = 1; 
 }
 
-message lset_size {
-   uint64 size = 1; 
-}
-
 message nfstime {
 	uint32 seconds = 1; 
 	uint32 nseconds = 2; 
@@ -92,7 +88,7 @@ message sattr {
 	lset_mode mode = 1; 
 	lset_uid uid = 2; 
 	lset_gid gid = 3;
-        lset_size size = 4;
+        uint64 size = 4;
         lset_time atime = 5;
         lset_time mtime = 6;
 }
@@ -212,4 +208,29 @@ message GETATTRresok {
 
 message GETATTRres {
   GETATTRresok resok = 1;
+}
+
+message sattrguard {
+  nfstime obj_ctime = 1;
+}
+
+message SETATTRargs {
+  nfs_fh object = 1;
+  sattr new_attributes = 2;
+  sattrguard guard = 3;
+}
+
+message SETATTRresok {
+  wcc_data obj_wcc = 1;
+}
+
+message SETATTRresfail {
+  wcc_data obj_wcc = 1;
+}
+
+message SETATTRres {
+  oneof SETATTRrestype {
+    SETATTRresok resok = 1;
+    SETATTRresfail resfail = 2;
+  }
 }

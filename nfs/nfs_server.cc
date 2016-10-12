@@ -24,6 +24,10 @@ using nfs::fattr_ftype;
 using nfs::GETATTRargs;
 using nfs::GETATTRres;
 using nfs::GETATTRresok;
+using nfs::SETATTRargs;
+using nfs::SETATTRres;
+using nfs::SETATTRresok;
+using nfs::SETATTRresfail;
 using nfs::READargs;
 using nfs::READres;
 using nfs::READresok;
@@ -62,6 +66,19 @@ class NFSServiceImpl final : public NFS::Service {
       return Status::OK;
     }
   }  
+
+  Status NFSPROC_SETATTR(ServerContext* context, const SETATTRargs* setAttrArgs,
+		         SETATTRres* setAttrRes) override {
+    std::unique_ptr<const std::string> server_path(getServerPath(setAttrArgs->object()));
+    int res = truncate(server_path->c_str(), setAttrArgs->new_attributes().size());
+    if (res == -1) {
+      setAttrRes->mutable_resfail();
+      return Status::OK;  // Failed to get attributes for the file.
+    } else {
+      setAttrRes->mutable_resok();
+      return Status::OK;
+    }
+  }
 
   Status NFSPROC_READ(ServerContext* context, const READargs* readArgs,
 		      READres* readRes) override {
