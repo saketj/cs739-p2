@@ -39,7 +39,8 @@ static int xmp_getattr(const char *path, struct stat *stbuf)
 {
 	int res;
 
-	res = lstat(path, stbuf);
+	// res = lstat(path, stbuf);
+	res = remote_getattr(path, stbuf);
 	if (res == -1)
 		return -errno;
 

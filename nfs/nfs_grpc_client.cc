@@ -1,35 +1,3 @@
-/*
- * Copyright 2015, Google Inc.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are
- * met:
- *
- *     * Redistributions of source code must retain the above copyright
- * notice, this list of conditions and the following disclaimer.
- *     * Redistributions in binary form must reproduce the above
- * copyright notice, this list of conditions and the following disclaimer
- * in the documentation and/or other materials provided with the
- * distribution.
- *     * Neither the name of Google Inc. nor the names of its
- * contributors may be used to endorse or promote products derived from
- * this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- */
-
 #include <iostream>
 #include <memory>
 #include <string>
@@ -41,6 +9,10 @@
 #include <cstddef>
 #include <vector>
 #include <algorithm>
+#include <stddef.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include <grpc++/grpc++.h>
 
@@ -51,6 +23,9 @@ using grpc::Channel;
 using grpc::ClientContext;
 using grpc::Status;
 using nfs::NFS;
+using nfs::fattr;
+using nfs::GETATTRargs;
+using nfs::GETATTRres;
 using nfs::READargs;
 using nfs::READres;
 using nfs::WRITEargs;
@@ -62,6 +37,43 @@ class NFSClient {
  public:
   NFSClient(std::shared_ptr<Channel> channel)
       : stub_(NFS::NewStub(channel)) {}
+
+  int NFSPROC_GETATTR(const char *path, struct stat *stbuf) {
+    // Data we are sending to the server.
+    GETATTRargs getAttrArgs;
+    getAttrArgs.mutable_object()->set_data(path);
+
+    // Container for the data we expect from the server.
+    GETATTRres getAttrRes;
+
+    // Context for the client. It could be used to convey extra information to
+    // the server and/or tweak certain RPC behaviors.
+    ClientContext context;
+
+    // The actual RPC.
+    Status status = stub_->NFSPROC_GETATTR(&context, getAttrArgs, &getAttrRes);
+
+    // Act upon its status.
+    if (status.ok() && getAttrRes.has_resok()) {
+      // Populate the stbuf data structure using the getAttrRes.
+      switch(getAttrRes.resok().obj_attributes().type()) {
+      case fattr::NFSDIR: stbuf->st_mode |= S_IFDIR; break;
+      case fattr::NFSREG: stbuf->st_mode |= S_IFREG; break;
+      default: break;
+      }
+      stbuf->st_size = getAttrRes.resok().obj_attributes().size();
+      stbuf->st_ino = getAttrRes.resok().obj_attributes().fileid();
+      stbuf->st_atime = getAttrRes.resok().obj_attributes().atime().seconds();
+      stbuf->st_mtime = getAttrRes.resok().obj_attributes().mtime().seconds();
+      stbuf->st_ctime = getAttrRes.resok().obj_attributes().ctime().seconds();
+      return 0;
+    } else {
+      std::cout << status.error_code() << ": " << status.error_message()
+                << std::endl;
+      return -1;
+    }
+  }
+
 
   // Assambles the client's payload, sends it and presents the response back
   // from the server.
@@ -95,7 +107,7 @@ class NFSClient {
     }
   }
 
-  int NFSPROC_WRITE(const char *path, const char *buf, size_t buf_size, size_t offset) {
+ int NFSPROC_WRITE(const char *path, const char *buf, size_t buf_size, size_t offset) {
     // Data we are sending to the server.
     WRITEargs writeArgs;
     writeArgs.mutable_file()->set_data(path);
@@ -136,6 +148,12 @@ NFSClient* getNFSClient() {
   std::string connection = std::string(SERVER) + ":50051";  
   std::unique_ptr<NFSClient> nfs_client(new NFSClient(grpc::CreateChannel(connection, grpc::InsecureChannelCredentials())));
   return nfs_client.release();
+}
+
+int remote_getattr(const char *path, struct stat *stbuf) {
+  std::unique_ptr<NFSClient> nfs_client(getNFSClient());
+  int res = nfs_client->NFSPROC_GETATTR(path, stbuf);
+  return res;
 }
 
 int remote_read(const char *path, char *buffer, size_t buffer_size, size_t offset) {

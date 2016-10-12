@@ -1,36 +1,3 @@
-/*
- *
- * Copyright 2015, Google Inc.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are
- * met:
- *
- *     * Redistributions of source code must retain the above copyright
- * notice, this list of conditions and the following disclaimer.
- *     * Redistributions in binary form must reproduce the above
- * copyright notice, this list of conditions and the following disclaimer
- * in the documentation and/or other materials provided with the
- * distribution.
- *     * Neither the name of Google Inc. nor the names of its
- * contributors may be used to endorse or promote products derived from
- * this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- */
-
 #include <cstdio>
 #include <iostream>
 #include <memory>
@@ -52,6 +19,11 @@ using grpc::ServerContext;
 using grpc::Status;
 using nfs::NFS;
 using nfs::nfs_fh;
+using nfs::fattr;
+using nfs::fattr_ftype;
+using nfs::GETATTRargs;
+using nfs::GETATTRres;
+using nfs::GETATTRresok;
 using nfs::READargs;
 using nfs::READres;
 using nfs::READresok;
@@ -68,6 +40,29 @@ const std::string* getServerPath(nfs_fh file_handle) {
 
 
 class NFSServiceImpl final : public NFS::Service {
+  Status NFSPROC_GETATTR(ServerContext* context, const GETATTRargs* getAttrArgs,
+		         GETATTRres* getAttrRes) override {
+    std::unique_ptr<const std::string> server_path(getServerPath(getAttrArgs->object()));
+    struct stat sb;
+    int res = lstat(server_path->c_str(), &sb);
+    if (res == -1) {
+      return Status::OK;  // Failed to get attributes for the file.
+    } else {
+      // Populate fattr based on stat.
+      switch(sb.st_mode & S_IFMT) {
+      case S_IFDIR: getAttrRes->mutable_resok()->mutable_obj_attributes()->set_type(fattr::NFSDIR); break;
+      case S_IFREG: getAttrRes->mutable_resok()->mutable_obj_attributes()->set_type(fattr::NFSREG); break;
+      default: break;
+      }
+      getAttrRes->mutable_resok()->mutable_obj_attributes()->set_size(sb.st_size);
+      getAttrRes->mutable_resok()->mutable_obj_attributes()->set_fileid(sb.st_ino);
+      getAttrRes->mutable_resok()->mutable_obj_attributes()->mutable_atime()->set_seconds(sb.st_atime);
+      getAttrRes->mutable_resok()->mutable_obj_attributes()->mutable_mtime()->set_seconds(sb.st_mtime);
+      getAttrRes->mutable_resok()->mutable_obj_attributes()->mutable_ctime()->set_seconds(sb.st_ctime);
+      return Status::OK;
+    }
+  }  
+
   Status NFSPROC_READ(ServerContext* context, const READargs* readArgs,
 		      READres* readRes) override {
     std::unique_ptr<const std::string> server_path(getServerPath(readArgs->file()));

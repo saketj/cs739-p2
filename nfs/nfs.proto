@@ -8,7 +8,9 @@ package nfs;
 service NFS {
   rpc NFSPROC_MKDIR(MKDIRargs) returns (MKDIRres) {}
   rpc NFSPROC_RMDIR(RMDIRargs) returns (RMDIRres) {}
-
+  
+  // rpc NFSPROC_SETATTR(SETATTRargs) returns (SETATTRres) {}
+  rpc NFSPROC_GETATTR(GETATTRargs) returns (GETATTRres) {}
   rpc NFSPROC_READ(READargs) returns (READres) {}
   rpc NFSPROC_WRITE(WRITEargs) returns (WRITEres) {}
 }
@@ -33,9 +35,9 @@ message fattr {
   uint64  used = 3;   // the actual disk space used for storing the file.
   uint64  fsid = 4;   // file system identifier.
   uint64  fileid = 5; // inode number of the file in the file system.
-  uint64  atime = 6;  // timestamp when the file was last accessed.
-  uint64  mtime = 7;  // timestamp when the file contents were last modified.
-  uint64  ctime = 8;  // timestamp when the attributes of file were last changed.
+  nfstime  atime = 6;  // timestamp when the file was last accessed.
+  nfstime  mtime = 7;  // timestamp when the file contents were last modified.
+  nfstime  ctime = 8;  // timestamp when the attributes of file were last changed.
 }
 
 message READargs {
@@ -200,3 +202,14 @@ message WRITEres {
   }
 }
 
+message GETATTRargs {
+  nfs_fh object = 1;
+}
+
+message GETATTRresok {
+  fattr obj_attributes = 1;
+}
+
+message GETATTRres {
+  GETATTRresok resok = 1;
+}
