@@ -1,6 +1,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <chrono>
 #include <ctime>
 #include <cstdint>
 #include <cstdlib>
@@ -12,6 +13,7 @@
 #include <stddef.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <thread>
 #include <unistd.h>
 
 #include <grpc++/grpc++.h>
@@ -34,7 +36,10 @@ using nfs::WRITEargs;
 using nfs::WRITEres;
 
 #define SERVER "localhost"
-
+#define RPC_TIMEOUT 5000  // Timeout in milliseconds after which the rpc request will fail
+#define CONN_TIMEOUT 100000 // Timeout in ms after which the client timeouts on the server
+#define RETRY 100   // Retry the rpc request after these many milliseconds
+  
 class NFSClient {
  public:
   NFSClient(std::shared_ptr<Channel> channel)
@@ -48,12 +53,15 @@ class NFSClient {
     // Container for the data we expect from the server.
     GETATTRres getAttrRes;
 
-    // Context for the client. It could be used to convey extra information to
-    // the server and/or tweak certain RPC behaviors.
-    ClientContext context;
-
-    // The actual RPC.
-    Status status = stub_->NFSPROC_GETATTR(&context, getAttrArgs, &getAttrRes);
+    int retry_interval = RETRY;
+    Status status; 
+    do {
+      // Context for the client. It could be used to convey extra information to
+      // the server and/or tweak certain RPC behaviors.
+      std::unique_ptr<ClientContext> context(getClientContext());
+      // The actual RPC.
+      status = stub_->NFSPROC_GETATTR(context.get(), getAttrArgs, &getAttrRes);
+    } while (isRetryRequiredForStatus(status, retry_interval));
 
     // Act upon its status.
     if (status.ok() && getAttrRes.has_resok()) {
@@ -85,12 +93,15 @@ class NFSClient {
     // Container for the data we expect from the server.
     SETATTRres setAttrRes;
 
-    // Context for the client. It could be used to convey extra information to
-    // the server and/or tweak certain RPC behaviors.
-    ClientContext context;
-
-    // The actual RPC.
-    Status status = stub_->NFSPROC_SETATTR(&context, setAttrArgs, &setAttrRes);
+    int retry_interval = RETRY;
+    Status status;
+    do {
+      // Context for the client. It could be used to convey extra information to
+      // the server and/or tweak certain RPC behaviors.
+      std::unique_ptr<ClientContext> context(getClientContext());
+      // The actual RPC.
+      status = stub_->NFSPROC_SETATTR(context.get(), setAttrArgs, &setAttrRes);
+    } while (isRetryRequiredForStatus(status, retry_interval));
 
     // Act upon its status.
     if (status.ok() && setAttrRes.has_resok()) {
@@ -112,14 +123,17 @@ class NFSClient {
     readArgs.set_count(buf_size);
 
     // Container for the data we expect from the server.
-    READres readRes;
+    READres readRes;    
 
-    // Context for the client. It could be used to convey extra information to
-    // the server and/or tweak certain RPC behaviors.
-    ClientContext context;
-
-    // The actual RPC.
-    Status status = stub_->NFSPROC_READ(&context, readArgs, &readRes);
+    int retry_interval = RETRY;
+    Status status;
+    do {
+      // Context for the client. It could be used to convey extra information to
+      // the server and/or tweak certain RPC behaviors.
+      // The actual RPC.
+      std::unique_ptr<ClientContext> context(getClientContext());
+      status = stub_->NFSPROC_READ(context.get(), readArgs, &readRes);
+    } while (isRetryRequiredForStatus(status, retry_interval));
 
     // Act upon its status.
     if (status.ok() && readRes.has_resok()) {
@@ -145,12 +159,15 @@ class NFSClient {
     // Container for the data we expect from the server.
     WRITEres writeRes;
 
-    // Context for the client. It could be used to convey extra information to
-    // the server and/or tweak certain RPC behaviors.
-    ClientContext context;
-
-    // The actual RPC.
-    Status status = stub_->NFSPROC_WRITE(&context, writeArgs, &writeRes);
+    int retry_interval = RETRY;
+    Status status;
+    do {
+      // Context for the client. It could be used to convey extra information to
+      // the server and/or tweak certain RPC behaviors.
+      std::unique_ptr<ClientContext> context(getClientContext());
+      // The actual RPC.
+      status = stub_->NFSPROC_WRITE(context.get(), writeArgs, &writeRes);
+    } while (isRetryRequiredForStatus(status, retry_interval));
 
     // Act upon its status.
     if (status.ok() && writeRes.has_resok()) {
@@ -162,6 +179,26 @@ class NFSClient {
       return -1;
     }
   }
+ 
+  ClientContext* getClientContext() {
+    std::unique_ptr<ClientContext> client_context(new ClientContext);
+    std::chrono::system_clock::time_point deadline = 
+      std::chrono::system_clock::now() + std::chrono::milliseconds(RPC_TIMEOUT);
+    client_context->set_deadline(deadline);
+    return client_context.release();
+  }
+ 
+  bool isRetryRequiredForStatus(const Status &status, int &retry_interval) {
+    if (status.ok()) {
+      return false;
+    } else {
+      // Wait for retry_interval to elapse.
+      std::cout << "RPC timed out. Retrying after " << retry_interval << " ms.\n";
+      std::this_thread::sleep_for (std::chrono::milliseconds(retry_interval));
+      retry_interval *= 2;  // Exponential backoff.
+      return true;
+    }
+  }  
 
  private:
   std::unique_ptr<NFS::Stub> stub_;
@@ -172,8 +209,13 @@ NFSClient* getNFSClient() {
   // are created. This channel models a connection to an endpoint (in this case,
   // localhost at port 50051). We indicate that the channel isn't authenticated
   // (use of InsecureChannelCredentials()).
-  std::string connection = std::string(SERVER) + ":50051";  
-  std::unique_ptr<NFSClient> nfs_client(new NFSClient(grpc::CreateChannel(connection, grpc::InsecureChannelCredentials())));
+  std::string connection = std::string(SERVER) + ":50051";
+  std::shared_ptr<Channel> channel = grpc::CreateChannel(connection, grpc::InsecureChannelCredentials());
+  std::chrono::system_clock::time_point deadline = 
+      std::chrono::system_clock::now() + std::chrono::milliseconds(CONN_TIMEOUT);
+  channel->WaitForConnected(deadline);
+  
+  std::unique_ptr<NFSClient> nfs_client(new NFSClient(channel));    
   return nfs_client.release();
 }
 

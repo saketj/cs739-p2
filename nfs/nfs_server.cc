@@ -12,6 +12,7 @@
 #include "nfs.grpc.pb.h"
 
 #define SERVER_DATA_DIR "/tmp/nfs_server"
+#define LAG_TIME 10  // Time in seconds that server lags before replying.
 
 using grpc::Server;
 using grpc::ServerBuilder;
@@ -39,6 +40,9 @@ using nfs::WRITEresfail;
 
 const std::string* getServerPath(nfs_fh file_handle) {
   std::unique_ptr<std::string> server_path(new std::string(std::string(SERVER_DATA_DIR) + file_handle.data()));
+  int sleep_time = rand() % LAG_TIME;
+  std::cout << "Sleeping for " << sleep_time << " seconds.\n";
+  sleep(sleep_time);
   return server_path.release();
 }
 
