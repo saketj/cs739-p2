@@ -37,6 +37,14 @@ using nfs::WRITEargs;
 using nfs::WRITEres;
 using nfs::COMMITargs;
 using nfs::COMMITres;
+using nfs::MKDIRargs;
+using nfs::MKDIRres;
+using nfs::RMDIRargs;
+using nfs::RMDIRres;
+using nfs::CREATEargs;
+using nfs::CREATEres;
+using nfs::REMOVEargs;
+using nfs::REMOVEres;
 
 #define SERVER "localhost"
 #define RPC_TIMEOUT 5000  // Timeout in milliseconds after which the rpc request will fail
@@ -71,18 +79,25 @@ class NFSClient {
 
     // Act upon its status.
     if (status.ok() && getAttrRes.has_resok()) {
-      // Populate the stbuf data structure using the getAttrRes.
-      switch(getAttrRes.resok().obj_attributes().type()) {
-      case fattr::NFSDIR: stbuf->st_mode |= S_IFDIR; break;
-      case fattr::NFSREG: stbuf->st_mode |= S_IFREG; break;
-      default: break;
-      }
-      stbuf->st_size = getAttrRes.resok().obj_attributes().size();
-      stbuf->st_ino = getAttrRes.resok().obj_attributes().fileid();
-      stbuf->st_atime = getAttrRes.resok().obj_attributes().atime().seconds();
-      stbuf->st_mtime = getAttrRes.resok().obj_attributes().mtime().seconds();
-      stbuf->st_ctime = getAttrRes.resok().obj_attributes().ctime().seconds();
-      return 0;
+      if (getAttrRes.resok().has_obj_attributes()) {
+      	// Populate the stbuf data structure using the getAttrRes.
+      	switch(getAttrRes.resok().obj_attributes().type()) {
+      	case fattr::NFSDIR: stbuf->st_mode |= S_IFDIR; break;
+      	case fattr::NFSREG: stbuf->st_mode |= S_IFREG; break;
+      	default: break;
+      	}
+      	stbuf->st_size = getAttrRes.resok().obj_attributes().size();
+      	stbuf->st_ino = getAttrRes.resok().obj_attributes().fileid();
+      	stbuf->st_atime = getAttrRes.resok().obj_attributes().atime().seconds();
+      	stbuf->st_mtime = getAttrRes.resok().obj_attributes().mtime().seconds();
+      	stbuf->st_ctime = getAttrRes.resok().obj_attributes().ctime().seconds();
+      	return 0;
+	}
+	else
+	{
+	//errno = ENOENT;       	
+	return -2;
+	}
     } else {
       std::cout << status.error_code() << ": " << status.error_message()
                 << std::endl;
@@ -194,6 +209,120 @@ class NFSClient {
       std::size_t data_size = writeRes.resok().count();
       latest_write_server_verf = writeRes.resok().verf();
       return data_size;
+    } else {
+      std::cout << status.error_code() << ": " << status.error_message()
+                << std::endl;
+      return -1;
+    }
+  }
+
+ int NFSPROC_MKDIR(const char *path, mode_t mode) {
+    // Data we are sending to the server.
+    MKDIRargs mkdirArgs;
+    mkdirArgs.mutable_where()->mutable_dir()->set_data(path);
+    mkdirArgs.mutable_attributes()->mutable_mode()->set_mode(mode);
+
+    // Container for the data we expect from the server.
+    MKDIRres mkdirRes;
+    
+    int retry_interval = RETRY;
+    Status status;
+    do {
+      // Context for the client. It could be used to convey extra information to
+      // the server and/or tweak certain RPC behaviors.
+      std::unique_ptr<ClientContext> context(getClientContext());
+      // The actual RPC.
+      status = stub_->NFSPROC_MKDIR(context.get(), mkdirArgs, &mkdirRes);
+    } while (isRetryRequiredForStatus(status, retry_interval));
+
+    // Act upon its status.
+    if (status.ok() && mkdirRes.has_resok()) {
+      return 0;
+    } else {
+      std::cout << status.error_code() << ": " << status.error_message()
+                << std::endl;
+      return -1;
+    }
+  }
+
+ int NFSPROC_RMDIR(const char *path) {
+    // Data we are sending to the server.
+    RMDIRargs rmdirArgs;
+    rmdirArgs.mutable_object()->mutable_dir()->set_data(path);
+    
+    // Container for the data we expect from the server.
+    RMDIRres rmdirRes;
+    
+    int retry_interval = RETRY;
+    Status status;
+    do {
+      // Context for the client. It could be used to convey extra information to
+      // the server and/or tweak certain RPC behaviors.
+      std::unique_ptr<ClientContext> context(getClientContext());
+      // The actual RPC.
+      status = stub_->NFSPROC_RMDIR(context.get(), rmdirArgs, &rmdirRes);
+    } while (isRetryRequiredForStatus(status, retry_interval));
+    
+    // Act upon its status.
+    if (status.ok() && rmdirRes.has_resok()) {
+      return 0;
+    } else {
+      std::cout << status.error_code() << ": " << status.error_message()
+                << std::endl;
+      return -1;
+    }
+  }
+
+ int NFSPROC_CREATE(const char *path, mode_t mode) {
+    // Data we are sending to the server.
+    CREATEargs createArgs;
+    createArgs.mutable_where()->mutable_dir()->set_data(path);
+   
+    // Container for the data we expect from the server.
+    CREATEres createRes;
+
+    int retry_interval = RETRY;
+    Status status;
+    do {
+      // Context for the client. It could be used to convey extra information to
+      // the server and/or tweak certain RPC behaviors.
+      std::unique_ptr<ClientContext> context(getClientContext());
+      // The actual RPC.
+      status = stub_->NFSPROC_CREATE(context.get(), createArgs, &createRes);
+    } while (isRetryRequiredForStatus(status, retry_interval));
+
+    // Act upon its status.
+    if (status.ok() && createRes.has_resok()) {
+      return 0;
+    } else {
+      std::cout << status.error_code() << ": " << status.error_message()
+                << std::endl;
+      return -1;
+    }
+  }
+
+ int NFSPROC_REMOVE(const char *path) {
+    // Data we are sending to the server.
+    REMOVEargs removeArgs;
+    removeArgs.mutable_object()->mutable_dir()->set_data(path);
+    //mkdirArgs.mutable_attributes().mutable_mode()->set_mode(mode);
+
+    // Container for the data we expect from the server.
+    REMOVEres removeRes;
+
+    int retry_interval = RETRY;
+    Status status;
+    do {
+      // Context for the client. It could be used to convey extra information to
+      // the server and/or tweak certain RPC behaviors.
+      std::unique_ptr<ClientContext> context(getClientContext());
+      // The actual RPC.
+      status = stub_->NFSPROC_REMOVE(context.get(), removeArgs, &removeRes);
+    } while (isRetryRequiredForStatus(status, retry_interval));
+
+    // Act upon its status.
+    if (status.ok() && removeRes.has_resok()) {
+      return 0;
     } else {
       std::cout << status.error_code() << ": " << status.error_message()
                 << std::endl;
@@ -316,11 +445,40 @@ int remote_write(const char *path, const char *buffer, const size_t buffer_size,
   return buffer_written;
 }
 
-
 int remote_fsync(const char *path) {
   printf("Sleeping in remote_fsync for 5 seconds.\n");
   sleep(5);
   std::unique_ptr<NFSClient> nfs_client(getNFSClient());
   int res = nfs_client->NFSPROC_COMMIT(path);
+  return res;
+}
+
+int remote_mkdir(const char *path, mode_t mode) {
+  std::unique_ptr<NFSClient> nfs_client(getNFSClient());
+  int res = nfs_client->NFSPROC_MKDIR(path, mode);
+  return res;
+}
+
+int remote_rmdir(const char *path) {
+  std::unique_ptr<NFSClient> nfs_client(getNFSClient());
+  int res = nfs_client->NFSPROC_RMDIR(path);
+  return res;
+}
+
+int remote_open(const char *path, mode_t mode) {
+  std::unique_ptr<NFSClient> nfs_client(getNFSClient());
+  int res = 0; // nfs_client->NFSPROC_LOOKUP(path, mode);
+  return res;
+}
+
+int remote_create(const char *path, int flags, mode_t mode) {
+  std::unique_ptr<NFSClient> nfs_client(getNFSClient());
+  int res = nfs_client->NFSPROC_CREATE(path, mode);
+  return res;
+}
+
+int remote_unlink(const char *path) {
+  std::unique_ptr<NFSClient> nfs_client(getNFSClient());
+  int res = nfs_client->NFSPROC_REMOVE(path);
   return res;
 }
