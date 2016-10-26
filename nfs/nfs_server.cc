@@ -1,23 +1,24 @@
 #include <cstdio>
+#include <fcntl.h>
 #include <iostream>
 #include <memory>
+#include <pthread.h>
 #include <string>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <fcntl.h>
 #include <unistd.h>
 
 #include <grpc++/grpc++.h>
 
 #include "nfs.grpc.pb.h"
-
-#define SERVER_DATA_DIR "/tmp/nfs_server"
-#define LAG_TIME 10  // Time in seconds that server lags before replying.
+#include "nfs_server_utilities.h"
+#include "nfs_server_batch_optimizer.h"
 
 using grpc::Server;
 using grpc::ServerBuilder;
 using grpc::ServerContext;
 using grpc::Status;
+
 using nfs::NFS;
 using nfs::nfs_fh;
 using nfs::fattr;
@@ -37,15 +38,14 @@ using nfs::WRITEargs;
 using nfs::WRITEres;
 using nfs::WRITEresok;
 using nfs::WRITEresfail;
+using nfs::COMMITargs;
+using nfs::COMMITres;
+using nfs::COMMITresok;
+using nfs::COMMITresfail;
+  
+static const std::string SERVER_VERF = std::to_string(std::chrono::system_clock::now().time_since_epoch() / std::chrono::milliseconds(1));
 
-const std::string* getServerPath(nfs_fh file_handle) {
-  std::unique_ptr<std::string> server_path(new std::string(std::string(SERVER_DATA_DIR) + file_handle.data()));
-  int sleep_time = rand() % LAG_TIME;
-  std::cout << "Sleeping for " << sleep_time << " seconds.\n";
-  sleep(sleep_time);
-  return server_path.release();
-}
-
+static BatchWriteOptimizer batchWriteOptimizer;
 
 class NFSServiceImpl final : public NFS::Service {
   Status NFSPROC_GETATTR(ServerContext* context, const GETATTRargs* getAttrArgs,
@@ -102,19 +102,48 @@ class NFSServiceImpl final : public NFS::Service {
   }
 
   Status NFSPROC_WRITE(ServerContext* context, const WRITEargs* writeArgs,
-		       WRITEres* readRes) override {
+		       WRITEres* writeRes) override {
     std::unique_ptr<const std::string> server_path(getServerPath(writeArgs->file()));
     int fd = open(server_path->c_str(), O_WRONLY);
     if (fd == -1) {
-      readRes->mutable_resfail();
+      writeRes->mutable_resfail();
       return Status::OK;
     } else {
-      const char *buf = writeArgs->data().c_str();
-      size_t bytes_written = pwrite(fd, buf, writeArgs->count(), writeArgs->offset());
-      readRes->mutable_resok()->set_count(bytes_written);
-      close(fd);
-      return Status::OK;
+      if (writeArgs->stable() == WRITEargs::UNSTABLE) {
+	// Unstable, fast, uncommitted writes with no fsync.
+	const char *buf = writeArgs->data().c_str();
+	batchWriteOptimizer.createRequest(writeArgs->file().data(), writeArgs->offset(), writeArgs->count(), buf);
+	size_t bytes_written = writeArgs->count(); //pwrite(fd, buf, writeArgs->count(), writeArgs->offset());
+	writeRes->mutable_resok()->set_count(bytes_written);
+	writeRes->mutable_resok()->set_verf(SERVER_VERF);
+	writeRes->mutable_resok()->set_committed(WRITEresok::UNSTABLE);
+	close(fd);
+	return Status::OK;
+      } else {
+	// Stable, slow, committed writes with forced fsync.
+	const char *buf = writeArgs->data().c_str();
+	std::cout << "Stable data: " << buf << std::endl;
+	size_t bytes_written = pwrite(fd, buf, writeArgs->count(), writeArgs->offset());
+	writeRes->mutable_resok()->set_count(bytes_written);
+	writeRes->mutable_resok()->set_verf(SERVER_VERF);
+	fsync(fd);
+	close(fd);
+	writeRes->mutable_resok()->set_committed(WRITEresok::DATA_SYNC);
+	return Status::OK;
+      }
     }
+  }
+
+  Status NFSPROC_COMMIT(ServerContext* context, const COMMITargs* commitArgs,
+			COMMITres* commitRes) override {
+    BatchWriteStatus status = batchWriteOptimizer.commitRequestFor(commitArgs->file().data(), commitArgs->offset(), commitArgs->count());
+    if (status == BatchWriteStatus::kCommitSuccess || status == BatchWriteStatus::kCommitNone) {
+      commitRes->mutable_resok();
+      commitRes->mutable_resok()->set_verf(SERVER_VERF);
+    } else {
+      commitRes->mutable_resfail();
+    }
+    return Status::OK;
   }
 };
 
@@ -129,15 +158,37 @@ void RunServer() {
   builder.RegisterService(&service);
   // Finally assemble the server.
   std::unique_ptr<Server> server(builder.BuildAndStart());
-  std::cout << "Server listening on " << server_address << std::endl;
+  std::cout << "Server (ID: " << SERVER_VERF << ") listening on " << server_address <<  std::endl;
 
   // Wait for the server to shutdown. Note that some other thread must be
   // responsible for shutting down the server for this call to ever return.
   server->Wait();
 }
 
-int main(int argc, char** argv) {
-  RunServer();
+void* RunBatchOptimizerThread(void *args) {
+  std::cout << "Started Batch Optimizer Thread in background.\n";
+  long sleep_time_in_microseconds = 10000;  // every 10 ms we flush buffer in memory to disk.
+  while(1) {
+    usleep(sleep_time_in_microseconds);
+    batchWriteOptimizer.scheduledCommit();
+  }
+  return nullptr;
+}
 
+int main(int argc, char** argv) {
+  // Create and run BatchOptimizerThread.
+  pthread_t batch_optimizer_thread;
+  pthread_attr_t attr;
+  pthread_attr_setschedpolicy(&attr, SCHED_IDLE);
+  sched_param param;
+  param.sched_priority = SCHED_IDLE;
+  pthread_attr_setschedparam(&attr, &param);
+
+  if (pthread_create(&batch_optimizer_thread, nullptr, RunBatchOptimizerThread, &attr)) {
+    fprintf(stderr, "Error creating Batch Optimizer Thread\n");
+    return 1;
+  }
+  
+  RunServer();
   return 0;
 }

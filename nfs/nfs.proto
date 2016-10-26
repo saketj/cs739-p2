@@ -13,6 +13,7 @@ service NFS {
   rpc NFSPROC_GETATTR(GETATTRargs) returns (GETATTRres) {}
   rpc NFSPROC_READ(READargs) returns (READres) {}
   rpc NFSPROC_WRITE(WRITEargs) returns (WRITEres) {}
+  rpc NFSPROC_COMMIT(COMMITargs) returns (COMMITres) {}
 }
 
 // The message definitions.
@@ -232,5 +233,27 @@ message SETATTRres {
   oneof SETATTRrestype {
     SETATTRresok resok = 1;
     SETATTRresfail resfail = 2;
+  }
+}
+
+message COMMITargs {
+  nfs_fh file = 1;
+  uint64 offset = 2;
+  uint64 count = 3;
+}
+
+message COMMITresok {
+  wcc_data file_wcc = 1;
+  string verf = 2;
+}
+
+message COMMITresfail {
+  wcc_data file_wcc = 1;
+}
+
+message COMMITres {
+  oneof COMMITrestype {
+    COMMITresok resok = 1;
+    COMMITresfail resfail = 2;
   }
 }

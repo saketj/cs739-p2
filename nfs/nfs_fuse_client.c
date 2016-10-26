@@ -306,23 +306,35 @@ static int xmp_statfs(const char *path, struct statvfs *stbuf)
 static int xmp_release(const char *path, struct fuse_file_info *fi)
 {
 	/* Just a stub.	 This method is optional and can safely be left
-	   unimplemented */
+	   unimplemented 
 
 	(void) path;
 	(void) fi;
-	return 0;
+	return 0; */
+
+        int res = remote_fsync(path);
+	if (res == -1)
+	        return -errno; 
+	
+        return 0;
 }
 
 static int xmp_fsync(const char *path, int isdatasync,
 		     struct fuse_file_info *fi)
 {
 	/* Just a stub.	 This method is optional and can safely be left
-	   unimplemented */
+	   unimplemented 
 
 	(void) path;
 	(void) isdatasync;
 	(void) fi;
-	return 0;
+	return 0; */
+        
+        int res = remote_fsync(path);
+	if (res == -1)
+	        return -errno; 
+	
+        return 0;
 }
 
 #ifdef HAVE_POSIX_FALLOCATE
