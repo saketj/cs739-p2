@@ -8,12 +8,13 @@ package nfs;
 service NFS {
   rpc NFSPROC_MKDIR(MKDIRargs) returns (MKDIRres) {}
   rpc NFSPROC_RMDIR(RMDIRargs) returns (RMDIRres) {}
-  
   rpc NFSPROC_SETATTR(SETATTRargs) returns (SETATTRres) {}
   rpc NFSPROC_GETATTR(GETATTRargs) returns (GETATTRres) {}
   rpc NFSPROC_READ(READargs) returns (READres) {}
   rpc NFSPROC_WRITE(WRITEargs) returns (WRITEres) {}
   rpc NFSPROC_COMMIT(COMMITargs) returns (COMMITres) {}
+  rpc NFSPROC_CREATE(CREATEargs) returns (CREATEres) {}
+  rpc NFSPROC_REMOVE (REMOVEargs) returns (REMOVEres) {}
 }
 
 // The message definitions.
@@ -81,6 +82,7 @@ message nfstime {
 	uint32 seconds = 1; 
 	uint32 nseconds = 2; 
 }
+
 message lset_time {
 	nfstime time = 1; 
 }
@@ -255,5 +257,45 @@ message COMMITres {
   oneof COMMITrestype {
     COMMITresok resok = 1;
     COMMITresfail resfail = 2;
+  }
+}
+
+message REMOVEargs {
+  diropargs  object = 1;
+}
+
+message REMOVEresok {
+  wcc_data    dir_wcc = 1;
+}
+
+message REMOVEresfail {
+  wcc_data    dir_wcc = 1;
+}
+
+message REMOVEres {
+  oneof REMOVErestype {
+    REMOVEresok   resok = 1;
+    REMOVEresfail resfail = 2;
+  }
+}
+
+message CREATEargs {
+  diropargs  where = 1;  
+}
+
+message CREATEresok {
+  post_op_fh   obj = 1;
+  post_op_attr  obj_attributes = 2;
+  wcc_data      dir_wcc = 3;
+}
+
+message CREATEresfail {
+  wcc_data    dir_wcc = 1;
+}
+
+message CREATEres {
+  oneof CREATErestype {
+    CREATEresok   resok = 1;
+    CREATEresfail resfail = 2;
   }
 }

@@ -29,8 +29,10 @@
 #include <dirent.h>
 #include <errno.h>
 #include <sys/time.h>
+
 #ifdef HAVE_SETXATTR
 #include <sys/xattr.h>
+#undef HAVE_SETXATTR  // Explicity undefine xattrs.
 #endif
 
 #include "nfs_grpc_client_wrapper.h"
@@ -38,12 +40,13 @@
 static int xmp_getattr(const char *path, struct stat *stbuf)
 {
 	int res;
-
+	
 	// res = lstat(path, stbuf);
 	res = remote_getattr(path, stbuf);
+	if (res == -2)
+	       return -2;
 	if (res == -1)
-		return -errno;
-
+	       return -errno;
 	return 0;
 }
 
@@ -51,10 +54,14 @@ static int xmp_access(const char *path, int mask)
 {
 	int res;
 
-	res = access(path, mask);
+	// res = access(path, mask);
+	
+	// Since no notion of permissions in being supported,
+	// access is replaced by simply a call to remote_open().
+	res = remote_open(path, mask);
 	if (res == -1)
 		return -errno;
-
+	
 	return 0;
 }
 
@@ -97,31 +104,12 @@ static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 	return 0;
 }
 
-static int xmp_mknod(const char *path, mode_t mode, dev_t rdev)
-{
-	int res;
-
-	/* On Linux this could just be 'mknod(path, mode, rdev)' but this
-	   is more portable */
-	if (S_ISREG(mode)) {
-		res = open(path, O_CREAT | O_EXCL | O_WRONLY, mode);
-		if (res >= 0)
-			res = close(res);
-	} else if (S_ISFIFO(mode))
-		res = mkfifo(path, mode);
-	else
-		res = mknod(path, mode, rdev);
-	if (res == -1)
-		return -errno;
-
-	return 0;
-}
-
 static int xmp_mkdir(const char *path, mode_t mode)
 {
 	int res;
 
-	res = mkdir(path, mode);
+	//res = mkdir(path, mode);
+	res = remote_mkdir(path, mode); 
 	if (res == -1)
 		return -errno;
 
@@ -132,7 +120,8 @@ static int xmp_unlink(const char *path)
 {
 	int res;
 
-	res = unlink(path);
+	//res = unlink(path);
+	res = remote_unlink(path); 
 	if (res == -1)
 		return -errno;
 
@@ -143,7 +132,8 @@ static int xmp_rmdir(const char *path)
 {
 	int res;
 
-	res = rmdir(path);
+	// res = rmdir(path);
+	res = remote_rmdir(path); 
 	if (res == -1)
 		return -errno;
 
@@ -235,13 +225,26 @@ static int xmp_open(const char *path, struct fuse_file_info *fi)
 {
 	int res;
 
-	res = open(path, fi->flags);
+	//res = open(path, fi->flags);
+	res = remote_open(path, fi->flags);
 	if (res == -1)
 		return -errno;
-
-	close(res);
+	
 	return 0;
 }
+
+
+static int xmp_create(const char *path, mode_t mode, struct fuse_file_info *fi)
+{
+        int res;
+
+        res = remote_create(path, fi->flags, mode);
+        if (res == -1)
+                return -errno;
+
+        return 0;
+}
+
 
 static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
 		    struct fuse_file_info *fi)
@@ -365,9 +368,12 @@ static int xmp_fallocate(const char *path, int mode,
 static int xmp_setxattr(const char *path, const char *name, const char *value,
 			size_t size, int flags)
 {
+	printf("Entering setattr in fuse: %s\n", path);
 	int res = lsetxattr(path, name, value, size, flags);
 	if (res == -1)
 		return -errno;
+	//if(res == -1)
+	//	return -2; 
 	return 0;
 }
 
@@ -402,7 +408,6 @@ static struct fuse_operations xmp_oper = {
 	.access		= xmp_access,
 	.readlink	= xmp_readlink,
 	.readdir	= xmp_readdir,
-	.mknod		= xmp_mknod,
 	.mkdir		= xmp_mkdir,
 	.symlink	= xmp_symlink,
 	.unlink		= xmp_unlink,
@@ -415,6 +420,7 @@ static struct fuse_operations xmp_oper = {
 #ifdef HAVE_UTIMENSAT
 	.utimens	= xmp_utimens,
 #endif
+	.create         = xmp_create,
 	.open		= xmp_open,
 	.read		= xmp_read,
 	.write		= xmp_write,
