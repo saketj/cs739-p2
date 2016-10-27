@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <sstream>
 #include <grpc++/grpc++.h>
 
 #include "nfs.grpc.pb.h"
@@ -57,6 +58,11 @@ using nfs::RMDIRargs;
 using nfs::RMDIRres;
 using nfs::RMDIRresok;
 using nfs::RMDIRresfail;
+using nfs::LOOKUPargs;
+using nfs::LOOKUPres;
+using nfs::LOOKUPresok;
+using nfs::LOOKUPresfail;
+  
 
 static const std::string SERVER_VERF = std::to_string(std::chrono::system_clock::now().time_since_epoch() / std::chrono::milliseconds(1));
 static BatchWriteOptimizer batchWriteOptimizer;
@@ -65,6 +71,10 @@ class NFSServiceImpl final : public NFS::Service {
   Status NFSPROC_GETATTR(ServerContext* context, const GETATTRargs* getAttrArgs,
 		         GETATTRres* getAttrRes) override {
     std::unique_ptr<const std::string> server_path(getServerPath(getAttrArgs->object()));
+    if(server_path == NULL) {
+      return Status::OK; 
+    }
+    
     struct stat sb;
     int res = lstat(server_path->c_str(), &sb);
     if (res == -1) { 
@@ -89,6 +99,12 @@ class NFSServiceImpl final : public NFS::Service {
   Status NFSPROC_SETATTR(ServerContext* context, const SETATTRargs* setAttrArgs,
 		         SETATTRres* setAttrRes) override {
     std::unique_ptr<const std::string> server_path(getServerPath(setAttrArgs->object()));
+     if(server_path == NULL)
+    {
+      //getAttrRes->mutable_resok();
+      return Status::OK;
+    }
+
     int res = truncate(server_path->c_str(), setAttrArgs->new_attributes().size());
     if (res == -1) {
       return Status::OK;  // Failed to get attributes for the file.
@@ -101,7 +117,15 @@ class NFSServiceImpl final : public NFS::Service {
   Status NFSPROC_READ(ServerContext* context, const READargs* readArgs,
 		      READres* readRes) override {
     std::unique_ptr<const std::string> server_path(getServerPath(readArgs->file()));
+     if(server_path == NULL)
+    {
+	readRes->mutable_resfail();
+      //getAttrRes->mutable_resok();
+      return Status::OK;
+    }
+
     int fd = open(server_path->c_str(), O_RDONLY);
+
     if (fd == -1) {
       readRes->mutable_resfail();
       return Status::OK;
@@ -118,6 +142,13 @@ class NFSServiceImpl final : public NFS::Service {
   Status NFSPROC_WRITE(ServerContext* context, const WRITEargs* writeArgs,
 		       WRITEres* writeRes) override {
     std::unique_ptr<const std::string> server_path(getServerPath(writeArgs->file()));
+       if(server_path == NULL)
+    {
+        writeRes->mutable_resfail();
+      //getAttrRes->mutable_resok();
+      return Status::OK;
+    }
+
     int fd = open(server_path->c_str(), O_WRONLY);
     if (fd == -1) {
       writeRes->mutable_resfail();
@@ -150,6 +181,22 @@ class NFSServiceImpl final : public NFS::Service {
     }
   }
 
+   Status NFSPROC_LOOKUP(ServerContext* context, const LOOKUPargs* lookupArgs,
+                         LOOKUPres* lookupRes) override {
+    std::unique_ptr<const std::string> server_path(getPathName(lookupArgs->what().dir()));
+    struct stat sb;
+    int res = lstat(server_path->c_str(), &sb);
+    
+    if (res == -1) {
+      return Status::OK;  // Failed to get attributes for the file.
+    } else {
+	long inode_no = (long) sb.st_ino;
+	std::string inode_str = std::to_string(inode_no);
+	lookupRes->mutable_resok()->mutable_object()->set_data(inode_str.c_str()); 	
+	return Status::OK;
+    }
+  }
+
   Status NFSPROC_COMMIT(ServerContext* context, const COMMITargs* commitArgs,
 			COMMITres* commitRes) override {
     BatchWriteStatus status = batchWriteOptimizer.commitRequestFor(commitArgs->file().data(), commitArgs->offset(), commitArgs->count());
@@ -165,7 +212,14 @@ class NFSServiceImpl final : public NFS::Service {
 
   Status NFSPROC_MKDIR(ServerContext* context, const MKDIRargs* mkdirArgs,
                       MKDIRres* mkdirRes) override {
-    std::unique_ptr<const std::string> server_path(getServerPath(mkdirArgs->where().dir()));
+
+    std::unique_ptr<const std::string> server_path(getPathName(mkdirArgs->where().dir()));
+    if(server_path == nullptr) {
+        mkdirRes->mutable_resfail();
+      //getAttrRes->mutable_resok();
+      return Status::OK;
+    }
+
     struct stat sb;
     if (stat(server_path->c_str(), &sb) == -1) {
         // Dir does not exist
@@ -182,6 +236,11 @@ class NFSServiceImpl final : public NFS::Service {
   Status NFSPROC_RMDIR(ServerContext* context, const RMDIRargs* rmdirArgs,
                       RMDIRres* rmdirRes) override {
     std::unique_ptr<const std::string> server_path(getServerPath(rmdirArgs->object().dir()));
+    if(server_path == nullptr) {
+      rmdirRes->mutable_resfail();
+      return Status::OK;
+    }
+
     struct stat sb;
     if (stat(server_path->c_str(), &sb) != -1) {
         if(rmdir(server_path->c_str()) == 0) {
@@ -190,6 +249,7 @@ class NFSServiceImpl final : public NFS::Service {
 	  return Status::OK;
     	}
     }
+
     // Directory does not exist or rmdir failed
     rmdirRes->mutable_resfail();
     return Status::OK;
@@ -198,7 +258,7 @@ class NFSServiceImpl final : public NFS::Service {
 
   Status NFSPROC_CREATE(ServerContext* context, const CREATEargs* createArgs,
                         CREATEres* createRes) override {
-    std::unique_ptr<const std::string> server_path(getServerPath(createArgs->where().dir()));
+    std::unique_ptr<const std::string> server_path(getPathName(createArgs->where().dir()));
     struct stat sb;
     if (stat(server_path->c_str(), &sb) == -1) {
       int fd = open(server_path->c_str(), O_CREAT, S_IRWXU | S_IRWXG);
@@ -221,12 +281,16 @@ class NFSServiceImpl final : public NFS::Service {
   Status NFSPROC_REMOVE(ServerContext* context, const REMOVEargs* removeArgs,
                       REMOVEres* removeRes) override {
     std::unique_ptr<const std::string> server_path(getServerPath(removeArgs->object().dir()));
+    if(server_path == nullptr) {
+      removeRes->mutable_resfail();
+      return Status::OK;
+    }
+
     struct stat sb;
     if (stat(server_path->c_str(), &sb) != -1) {
-        if(remove(server_path->c_str()) == 0)
-        {
-                removeRes->mutable_resok();
-		return Status::OK;
+        if(remove(server_path->c_str()) == 0) {
+	  removeRes->mutable_resok();
+	  return Status::OK;
         }
     }
     removeRes->mutable_resfail();
