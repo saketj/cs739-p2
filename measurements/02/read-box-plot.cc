@@ -9,13 +9,12 @@
 #include "../utils.h"
 using namespace std;
 
-#define NUM_TRIALS 1
-#define BEGIN 1
-#define END 128  // 67108864
+#define NUM_TRIALS 1000
+#define BEGIN 65536
+#define END 65536  // 67108864
 
 int main(int argc, char **argv) {
   const char* path = argv[1];
-  vector<pair<int,double>> exp;
   int bytes_read = 0;
   for (int i = BEGIN; i <= END; i = i << 1) {
     vector<double> trials(NUM_TRIALS, 0);
@@ -26,12 +25,11 @@ int main(int argc, char **argv) {
       bytes_read += fread(buf, 1, i, file);
       long end = getCurrentTime();    // end
       fclose(file);
-      trials[j] = (double)(end - begin);
+      long time_taken = (double)(end - begin);
+      cout<< j << "," << time_taken << endl;
       delete []buf;
     }
-    exp.push_back(make_pair(i, median(trials)));
   }
-  output_bandwidth(exp);
   cout<<"Total bytes read " << bytes_read << endl;
   return 0;
 }

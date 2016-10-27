@@ -9,21 +9,21 @@
 #include "../utils.h"
 using namespace std;
 
-#define NUM_TRIALS 1
+#define NUM_TRIALS 11
 #define BEGIN 1
-#define END 128  // 67108864
+#define END 1048576
 
 int main(int argc, char **argv) {
   const char* path = argv[1];
   vector<pair<int,double>> exp;
-  int bytes_read = 0;
+  int bytes_written = 0;
   for (int i = BEGIN; i <= END; i = i << 1) {
     vector<double> trials(NUM_TRIALS, 0);
     for (int j = 0; j < trials.size(); ++j) {  
-      FILE *file = fopen(path, "rb");
+      FILE *file = fopen(path, "wb");
       char *buf = new char[i];
       long begin = getCurrentTime();  // start
-      bytes_read += fread(buf, 1, i, file);
+      bytes_written += fwrite(buf, 1, i, file);
       long end = getCurrentTime();    // end
       fclose(file);
       trials[j] = (double)(end - begin);
@@ -32,7 +32,7 @@ int main(int argc, char **argv) {
     exp.push_back(make_pair(i, median(trials)));
   }
   output_bandwidth(exp);
-  cout<<"Total bytes read " << bytes_read << endl;
+  cout<<"Total bytes written " << bytes_written << endl;
   return 0;
 }
 
