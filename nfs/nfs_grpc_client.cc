@@ -54,7 +54,7 @@ using nfs::LOOKUPres;
 #define RETRY 100   // Retry the rpc request after these many milliseconds
 // #define DEBUG true
 
-static std::string latest_write_server_verf = "";
+static std::string latest_write_server_verf = std::to_string(std::numeric_limits<long>::max());
 static std::unordered_map<std::string, std::vector<WRITEargs>> client_buffer_map;
 static std::unordered_map<std::string, std::string> fh_map;
 
@@ -235,7 +235,9 @@ class NFSClient {
     // Act upon its status.
     if (status.ok() && writeRes.has_resok()) {
       std::size_t data_size = writeRes.resok().count();
-      latest_write_server_verf = writeRes.resok().verf();
+      if (isUnstable) {
+	latest_write_server_verf = std::to_string(std::min(std::stol(writeRes.resok().verf()), std::stol(latest_write_server_verf)));
+      }
       return data_size;
     } else {
       #ifdef DEBUG
@@ -493,7 +495,7 @@ class NFSClient {
     }
     
     client_buffer_map.erase(path);  // Release the buffer.
-
+    latest_write_server_verf = std::to_string(std::numeric_limits<long>::max());
     return 0;
   }
 
