@@ -101,7 +101,9 @@ class BatchWriteOptimizer {
     for (int i = 0; i < SCHEDULED_BATCH_COMMIT_SIZE; ++i) {
       if (batch_write_request_queue.empty()) break;
       auto request = batch_write_request_queue.begin();
+      #ifdef DEBUG
       std::cout << "Scheduled commit for: " << request->request_id_ << std::endl;
+      #endif
       std::unique_ptr<const std::string> server_path(getServerPath(request->fh_data_));
       synchronous_write(server_path.get(), request->offset_, request->count_, request->buf_.get());
       batch_write_request_queue.erase(request);

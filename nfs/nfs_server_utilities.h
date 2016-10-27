@@ -3,15 +3,18 @@
 
 #define SERVER_DATA_DIR "/tmp/nfs_server"
 #define LAG_TIME 5  // Time in seconds that server lags before replying.
+// #define DEBUG true
 
 using nfs::nfs_fh;
 
 const std::string* getServerPath(std::string fh_data) {
   std::unique_ptr<std::string> server_path(new std::string(std::string(SERVER_DATA_DIR) + fh_data));
+  #ifdef DEBUG
   int sleep_time = rand() % LAG_TIME;
   std::cout << "server path " << *server_path << std::endl;
   std::cout << "Sleeping for " << sleep_time << " seconds.\n";
   sleep(sleep_time);
+  #endif
   return server_path.release();
 }
 

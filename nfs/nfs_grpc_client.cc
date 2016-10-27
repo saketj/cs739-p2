@@ -50,6 +50,7 @@ using nfs::REMOVEres;
 #define RPC_TIMEOUT 5000  // Timeout in milliseconds after which the rpc request will fail
 #define CONN_TIMEOUT 100000 // Timeout in ms after which the client timeouts on the server
 #define RETRY 100   // Retry the rpc request after these many milliseconds
+// #define DEBUG true
 
 static std::string latest_write_server_verf = "";
 static std::unordered_map<std::string, std::vector<WRITEargs>> client_buffer_map;
@@ -378,7 +379,9 @@ class NFSClient {
       return false;
     } else {
       // Wait for retry_interval to elapse.
+      #ifdef DEBUG
       std::cout << "RPC timed out. Retrying after " << retry_interval << " ms.\n";
+      #endif
       std::this_thread::sleep_for (std::chrono::milliseconds(retry_interval));
       retry_interval *= 2;  // Exponential backoff.
       return true;
@@ -387,7 +390,9 @@ class NFSClient {
   
   int releaseBuffersBasedOnCommitStatus(const std::string &path, const COMMITres &commitRes) {
     if (latest_write_server_verf.compare(commitRes.resok().verf()) != 0) {
+      #ifdef DEBUG
       printf("versions don't match\n");
+      #endif
       // Server has crashed and come back since the latest write, hence 
       // all pending uncommitted writes need to be retransmitted.
       std::vector<WRITEargs> &request_vec = client_buffer_map[path];
@@ -446,8 +451,10 @@ int remote_write(const char *path, const char *buffer, const size_t buffer_size,
 }
 
 int remote_fsync(const char *path) {
+  #ifdef DEBUG
   printf("Sleeping in remote_fsync for 5 seconds.\n");
   sleep(5);
+  #endif
   std::unique_ptr<NFSClient> nfs_client(getNFSClient());
   int res = nfs_client->NFSPROC_COMMIT(path);
   return res;

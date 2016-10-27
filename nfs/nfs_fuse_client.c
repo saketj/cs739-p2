@@ -291,7 +291,6 @@ static int xmp_write(const char *path, const char *buf, size_t size,
 	close(fd);
 	*/
 	res = remote_write(path, buf, size, offset);
-	printf("write res = %d\n", res);
 	return res;
 }
 

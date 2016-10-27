@@ -58,7 +58,6 @@ using nfs::RMDIRres;
 using nfs::RMDIRresok;
 using nfs::RMDIRresfail;
 
-
 static const std::string SERVER_VERF = std::to_string(std::chrono::system_clock::now().time_since_epoch() / std::chrono::milliseconds(1));
 static BatchWriteOptimizer batchWriteOptimizer;
 
@@ -137,7 +136,9 @@ class NFSServiceImpl final : public NFS::Service {
       } else {
 	// Stable, slow, committed writes with forced fsync.
 	const char *buf = writeArgs->data().c_str();
+	#ifdef DEBUG
 	std::cout << "Stable data: " << buf << std::endl;
+	#endif
 	size_t bytes_written = pwrite(fd, buf, writeArgs->count(), writeArgs->offset());
 	writeRes->mutable_resok()->set_count(bytes_written);
 	writeRes->mutable_resok()->set_verf(SERVER_VERF);
@@ -253,7 +254,9 @@ void RunServer() {
 }
 
 void* RunBatchOptimizerThread(void *args) {
+  #ifdef DEBUG
   std::cout << "Started Batch Optimizer Thread in background.\n";
+  #endif
   long sleep_time_in_microseconds = 10000;  // every 10 ms we flush buffer in memory to disk.
   while(1) {
     usleep(sleep_time_in_microseconds);
