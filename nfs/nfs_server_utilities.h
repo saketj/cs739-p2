@@ -14,6 +14,8 @@
 
 using nfs::nfs_fh;
 
+static const std::string SERVER_DATA_DIR_STR = std::string(SERVER_DATA_DIR);
+
 const std::string* getPathName(std::string fh_data) {
   std::unique_ptr<std::string> server_path(new std::string(std::string(SERVER_DATA_DIR) + fh_data));
   #ifdef DEBUG
@@ -25,49 +27,42 @@ const std::string* getPathName(std::string fh_data) {
   return server_path.release();
 }
 
-const char* inode_path(const char *name, int level, long inode_no)
+const char* inode_path(std::string path, int level, long inode_no)
 {
-    DIR *dir;
-    struct dirent *entry;
-    //std::cout << "Inode to path is getting called\n"; 
-    if (!(dir = opendir(name)))
-        return NULL;
-    if (!(entry = readdir(dir)))
-        return NULL;
-    //std::cout << "Pathname of root: " << name << " inode_no: " << inode_no << "\n";
-    do {
-        //std::cout<< "Name: " << entry->d_name << "\n"; 
-        if (entry->d_type == DT_DIR) { 
-            char path[1024];
-            int len = snprintf(path, sizeof(path)-1, "%s/%s", name, entry->d_name);
-            path[len] = 0;
-            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
-                continue;
-            //printf("%*s[%s]\n", level*2, "", entry->d_name);
-            inode_path(path, level + 1, inode_no);
-        }
-        //else
-	//{
-	    struct stat sb;
-	    std::unique_ptr<std::string> path(new std::string(std::string(SERVER_DATA_DIR) + "/" +entry->d_name)); 
-	    //std::cout << "New path name: " << std::string(path->c_str()) << "\n"; 
-	    int res = lstat(path->c_str(), &sb);
-	    if (res == -1)
-	   {
-		return NULL; 
-	   }
-	    long inode_no_current = (long) sb.st_ino;
-	    if(inode_no_current == inode_no)
-	    {
-		//std::cout << "Yay\n"; 
-		return path->c_str(); 
-	    }
-            //printf("%*s- %s\n", level*2, "", entry->d_name);
-	    //}
-    } while (entry = readdir(dir));
-    //std::cout << "Out of while loop \n"; 
-    //closedir(dir);
-	return NULL; 
+  struct stat path_stat;
+  int res = lstat(path.c_str(), &path_stat);
+  if (res == -1) return nullptr;  // End-of-Recursion
+  
+  long curr_inode = (long) path_stat.st_ino;
+  if (curr_inode == inode_no) {
+      return path.c_str();  // Inode found, End-of-Recursion!
+  }
+  
+  if (S_ISREG(path_stat.st_mode)) {
+    // Regular File detected, End-of-Recursion 
+    return nullptr;
+  }
+  
+  DIR *dir;
+  dirent *entry;
+    
+  if (!(dir = opendir(path.c_str()))) return nullptr;
+
+  if (!(entry = readdir(dir))) return nullptr;
+
+  do {
+    const char *d_name = entry->d_name;
+    if (strcmp(d_name, ".") != 0 && strcmp(d_name, "..") != 0) {
+      std::string r_path = path + "/" + std::string(d_name);
+      const char* result = inode_path(r_path, level + 1, inode_no);
+      if (result != nullptr) {
+	closedir(dir);
+	return result;
+      }
+    }
+  } while (entry = readdir(dir));
+  closedir(dir);
+  return nullptr;
 }
 
 const std::string* getPathName(nfs_fh file_handle) {
@@ -76,12 +71,16 @@ const std::string* getPathName(nfs_fh file_handle) {
 
 
 const std::string* getServerPath(std::string fh_data) {
-  long inode_no = atol (fh_data.c_str()); 
-  std::cout << "Inode which is going to be mapped to path: " << inode_no << "\n"; 
-  std::unique_ptr<std::string> server_path(new std::string(inode_path(std::string(SERVER_DATA_DIR).c_str(), 0, inode_no)));
-  std::cout << "server path mapped from inode: " << *server_path << std::endl;
-
-  return server_path.release();
+  long inode_no = atol(fh_data.c_str());
+  const char *ret_path = inode_path(SERVER_DATA_DIR_STR, 0, inode_no);
+  if (ret_path == nullptr) {
+    std::unique_ptr<std::string> server_path(nullptr);
+    return server_path.release();
+  }
+  else {
+    std::unique_ptr<std::string> server_path(new std::string(ret_path));
+    return server_path.release();
+  }
 }
 
 const std::string* getServerPath(nfs_fh file_handle) {

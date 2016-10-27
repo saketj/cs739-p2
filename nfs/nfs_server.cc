@@ -71,11 +71,10 @@ class NFSServiceImpl final : public NFS::Service {
   Status NFSPROC_GETATTR(ServerContext* context, const GETATTRargs* getAttrArgs,
 		         GETATTRres* getAttrRes) override {
     std::unique_ptr<const std::string> server_path(getServerPath(getAttrArgs->object()));
-    if(server_path == NULL)
-    {
-      //getAttrRes->mutable_resok();
+    if(server_path == NULL) {
       return Status::OK; 
     }
+    
     struct stat sb;
     int res = lstat(server_path->c_str(), &sb);
     if (res == -1) { 
@@ -185,26 +184,15 @@ class NFSServiceImpl final : public NFS::Service {
    Status NFSPROC_LOOKUP(ServerContext* context, const LOOKUPargs* lookupArgs,
                          LOOKUPres* lookupRes) override {
     std::unique_ptr<const std::string> server_path(getPathName(lookupArgs->what().dir()));
-       if(server_path == NULL)
-    {
-        //readRes->mutable_resfail();
-      //getAttrRes->mutable_resok();
-      return Status::OK;
-    }
-
-	struct stat sb;
+    struct stat sb;
     int res = lstat(server_path->c_str(), &sb);
     
-
     if (res == -1) {
       return Status::OK;  // Failed to get attributes for the file.
     } else {
 	long inode_no = (long) sb.st_ino;
-	//std::ostringstream oss;
-	//oss << inode_no;
 	std::string inode_str = std::to_string(inode_no);
 	lookupRes->mutable_resok()->mutable_object()->set_data(inode_str.c_str()); 	
-
 	return Status::OK;
     }
   }
@@ -226,8 +214,7 @@ class NFSServiceImpl final : public NFS::Service {
                       MKDIRres* mkdirRes) override {
 
     std::unique_ptr<const std::string> server_path(getPathName(mkdirArgs->where().dir()));
-	   if(server_path == NULL)
-    {
+    if(server_path == nullptr) {
         mkdirRes->mutable_resfail();
       //getAttrRes->mutable_resok();
       return Status::OK;
@@ -249,16 +236,12 @@ class NFSServiceImpl final : public NFS::Service {
   Status NFSPROC_RMDIR(ServerContext* context, const RMDIRargs* rmdirArgs,
                       RMDIRres* rmdirRes) override {
     std::unique_ptr<const std::string> server_path(getServerPath(rmdirArgs->object().dir()));
-   //std::cout << "Rmdir path: " << std::string(server_path->c_str()) << "\n";   
-    if(server_path == NULL)
-    {
-
-        rmdirRes->mutable_resfail();
-      //getAttrRes->mutable_resok();
+    if(server_path == nullptr) {
+      rmdirRes->mutable_resfail();
       return Status::OK;
     }
 
-	struct stat sb;
+    struct stat sb;
     if (stat(server_path->c_str(), &sb) != -1) {
         if(rmdir(server_path->c_str()) == 0) {
 	  // Directory deleted
@@ -266,6 +249,7 @@ class NFSServiceImpl final : public NFS::Service {
 	  return Status::OK;
     	}
     }
+
     // Directory does not exist or rmdir failed
     rmdirRes->mutable_resfail();
     return Status::OK;
@@ -297,19 +281,16 @@ class NFSServiceImpl final : public NFS::Service {
   Status NFSPROC_REMOVE(ServerContext* context, const REMOVEargs* removeArgs,
                       REMOVEres* removeRes) override {
     std::unique_ptr<const std::string> server_path(getServerPath(removeArgs->object().dir()));
-       if(server_path == NULL)
-    {
-        removeRes->mutable_resfail();
-      //getAttrRes->mutable_resok();
+    if(server_path == nullptr) {
+      removeRes->mutable_resfail();
       return Status::OK;
     }
 
     struct stat sb;
     if (stat(server_path->c_str(), &sb) != -1) {
-        if(remove(server_path->c_str()) == 0)
-        {
-                removeRes->mutable_resok();
-		return Status::OK;
+        if(remove(server_path->c_str()) == 0) {
+	  removeRes->mutable_resok();
+	  return Status::OK;
         }
     }
     removeRes->mutable_resfail();

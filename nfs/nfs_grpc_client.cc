@@ -65,15 +65,13 @@ class NFSClient {
       : stub_(NFS::NewStub(channel)) {}
 
   int NFSPROC_GETATTR(const char *c_path, struct stat *stbuf) {
-//    printf("in nfsproc_getattr\n");
     if (fh_map.find(std::string(c_path)) == fh_map.end()) {
       int res = NFSPROC_LOOKUP(c_path);
-      if (res != 0) return -2;
-	//std::cout << "File not found: \n" 
+      if (res != 0) return -2;  // File does not exist at server!
     }
     
     const char *path = fh_map[std::string(c_path)].c_str();
-  //  printf("client handle : %s\n", path);
+  
     // Data we are sending to the server.
     GETATTRargs getAttrArgs;
     getAttrArgs.mutable_object()->set_data(path);
@@ -106,16 +104,14 @@ class NFSClient {
       	stbuf->st_mtime = getAttrRes.resok().obj_attributes().mtime().seconds();
       	stbuf->st_ctime = getAttrRes.resok().obj_attributes().ctime().seconds();
       	return 0;
-	}
-	else
-	{
-	//errno = ENOENT;       	
+      } else {
 	return -2;
-	}
+      }
     } else {
-	std::cout << "COMING HERE\n"; 
+      #ifdef DEBUG
       std::cout << status.error_code() << ": " << status.error_message()
                 << std::endl;
+      #endif
       return -2;
     }
   }
@@ -147,9 +143,12 @@ class NFSClient {
     if (status.ok() && setAttrRes.has_resok()) {
       return 0;
     } else {
+      #ifdef DEBUG
       std::cout << status.error_code() << ": " << status.error_message()
                 << std::endl;
+      #endif
       return -1;
+      
     }
   }
 
@@ -186,8 +185,10 @@ class NFSClient {
       strncpy(buf, data.c_str(), data_size);
       return data_size;
     } else {
+      #ifdef DEBUG
       std::cout << status.error_code() << ": " << status.error_message()
                 << std::endl;
+      #endif
       return -1;
     }
   }
@@ -237,8 +238,10 @@ class NFSClient {
       latest_write_server_verf = writeRes.resok().verf();
       return data_size;
     } else {
+      #ifdef DEBUG
       std::cout << status.error_code() << ": " << status.error_message()
                 << std::endl;
+      #endif
       return -1;
     }
   }
@@ -270,8 +273,10 @@ class NFSClient {
     if (status.ok() && mkdirRes.has_resok()) {
       return 0;
     } else {
+      #ifdef DEBUG
       std::cout << status.error_code() << ": " << status.error_message()
                 << std::endl;
+      #endif
       return -1;
     }
   }
@@ -302,17 +307,15 @@ class NFSClient {
     if (status.ok() && rmdirRes.has_resok()) {
       return 0;
     } else {
+      #ifdef DEBUG
       std::cout << status.error_code() << ": " << status.error_message()
                 << std::endl;
+      #endif
       return -1;
     }
   }
 
  int NFSPROC_CREATE(const char *path, mode_t mode) {
-    /*if (fh_map.find(std::string(c_path)) == fh_map.end()) {
-      return -1;
-    }
-    const char *path = fh_map[std::string(c_path)].c_str();*/
     // Data we are sending to the server.
     CREATEargs createArgs;
     createArgs.mutable_where()->mutable_dir()->set_data(path);
@@ -334,8 +337,10 @@ class NFSClient {
     if (status.ok() && createRes.has_resok()) {
       return 0;
     } else {
+      #ifdef DEBUG
       std::cout << status.error_code() << ": " << status.error_message()
                 << std::endl;
+      #endif
       return -1;
     }
   }
@@ -367,8 +372,10 @@ class NFSClient {
     if (status.ok() && removeRes.has_resok()) {
       return 0;
     } else {
+      #ifdef DEBUG
       std::cout << status.error_code() << ": " << status.error_message()
                 << std::endl;
+      #endif
       return -1;
     }
   }
@@ -406,8 +413,10 @@ class NFSClient {
     if (status.ok() && commitRes.has_resok()) {
       return releaseBuffersBasedOnCommitStatus(commitArgs.file().data(), commitRes);
     } else {
+      #ifdef DEBUG
       std::cout << status.error_code() << ": " << status.error_message()
                 << std::endl;
+      #endif
       return -1;
     }
   }
@@ -421,26 +430,28 @@ class NFSClient {
     // Container for the data we expect from the server.
     LOOKUPres lookupRes;
 
-    // Context for the client. It could be used to convey extra information to
-    // the server and/or tweak certain RPC behaviors.
-    ClientContext context;
-    //std::cout << "before rmdir rpc\n";
-    // The actual RPC.
-    Status status = stub_->NFSPROC_LOOKUP(&context, lookupArgs, &lookupRes);
-    //std::cout << "after rmdir rpc" << status.ok() << "  " << rmdirRes.has_resok() << "\n";
-    // Act upon its status.
-    
+    int retry_interval = RETRY;
+    Status status;
+    do {
+      // Context for the client. It could be used to convey extra information to
+      // the server and/or tweak certain RPC behaviors.
+      std::unique_ptr<ClientContext> context(getClientContext());
+      
+      // The actual RPC.
+      status = stub_->NFSPROC_LOOKUP(context.get(), lookupArgs, &lookupRes);
+    } while (isRetryRequiredForStatus(status, retry_interval));
+
+    // Act upon its status.    
     if (status.ok() && lookupRes.has_resok()) {
-      //std::cout << "going to return zero\n";
       std::string key(path);
       std::string value = lookupRes.resok().object().data();
       fh_map.insert(make_pair(key, value));
-      //printf("key = %s, value = %s\n", key.c_str(), value.c_str());
       return 0;
     } else {
-	std::cout << "non zero\n";
+      #ifdef DEBUG
       std::cout << status.error_code() << ": " << status.error_message()
                 << std::endl;
+      #endif
       return -1;
     }
   }
