@@ -9,30 +9,17 @@
 #include "../utils.h"
 using namespace std;
 
-#define NUM_TRIALS 11
-#define BEGIN 1
-#define END 1048576
+#define SIZE 1048576
 
 int main(int argc, char **argv) {
   const char* path = argv[1];
-  vector<pair<int,double>> exp;
   int bytes_written = 0;
-  for (int i = BEGIN; i <= END; i = i << 1) {
-    vector<double> trials(NUM_TRIALS, 0);
-    for (int j = 0; j < trials.size(); ++j) {  
-      FILE *file = fopen(path, "wb");
-      char *buf = new char[i];
-      long begin = getCurrentTime();  // start
-      bytes_written += fwrite(buf, 1, i, file);
-      long end = getCurrentTime();    // end
-      fclose(file);
-      trials[j] = (double)(end - begin);
-      delete []buf;
-    }
-    exp.push_back(make_pair(i, median(trials)));
-  }
-  output_bandwidth(exp);
-  cout<<"Total bytes written " << bytes_written << endl;
-  return 0;
+  FILE *file = fopen(path, "wb");
+  char *buf = new char[SIZE];
+  bytes_written += fwrite(buf, 1, SIZE, file);
+  fclose(file);
+  delete []buf;
+  if (bytes_written >= 0) return 0;
+  return 1;
 }
 
