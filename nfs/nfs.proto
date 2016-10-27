@@ -15,6 +15,7 @@ service NFS {
   rpc NFSPROC_COMMIT(COMMITargs) returns (COMMITres) {}
   rpc NFSPROC_CREATE(CREATEargs) returns (CREATEres) {}
   rpc NFSPROC_REMOVE (REMOVEargs) returns (REMOVEres) {}
+  rpc NFSPROC_LOOKUP(LOOKUPargs) returns (LOOKUPres) {}
 }
 
 // The message definitions.
@@ -297,5 +298,26 @@ message CREATEres {
   oneof CREATErestype {
     CREATEresok   resok = 1;
     CREATEresfail resfail = 2;
+  }
+}
+
+message LOOKUPargs {
+	diropargs  what = 1;
+}
+
+message LOOKUPresok {
+	nfs_fh      object = 1;
+        post_op_attr obj_attributes = 2;
+        post_op_attr dir_attributes = 3;
+}
+
+message LOOKUPresfail {
+	post_op_attr dir_attributes = 1;
+}
+
+message LOOKUPres {
+  oneof LOOKUPrestype {
+    LOOKUPresok   resok = 1;
+    LOOKUPresfail resfail = 2;
   }
 }

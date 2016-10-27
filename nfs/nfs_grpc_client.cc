@@ -45,6 +45,8 @@ using nfs::CREATEargs;
 using nfs::CREATEres;
 using nfs::REMOVEargs;
 using nfs::REMOVEres;
+using nfs::LOOKUPargs;
+using nfs::LOOKUPres;
 
 #define SERVER "localhost"
 #define RPC_TIMEOUT 5000  // Timeout in milliseconds after which the rpc request will fail
@@ -54,13 +56,24 @@ using nfs::REMOVEres;
 
 static std::string latest_write_server_verf = "";
 static std::unordered_map<std::string, std::vector<WRITEargs>> client_buffer_map;
+static std::unordered_map<std::string, std::string> fh_map;
+
   
 class NFSClient {
  public:
   NFSClient(std::shared_ptr<Channel> channel)
       : stub_(NFS::NewStub(channel)) {}
 
-  int NFSPROC_GETATTR(const char *path, struct stat *stbuf) {
+  int NFSPROC_GETATTR(const char *c_path, struct stat *stbuf) {
+//    printf("in nfsproc_getattr\n");
+    if (fh_map.find(std::string(c_path)) == fh_map.end()) {
+      int res = NFSPROC_LOOKUP(c_path);
+      if (res != 0) return -2;
+	//std::cout << "File not found: \n" 
+    }
+    
+    const char *path = fh_map[std::string(c_path)].c_str();
+  //  printf("client handle : %s\n", path);
     // Data we are sending to the server.
     GETATTRargs getAttrArgs;
     getAttrArgs.mutable_object()->set_data(path);
@@ -100,13 +113,18 @@ class NFSClient {
 	return -2;
 	}
     } else {
+	std::cout << "COMING HERE\n"; 
       std::cout << status.error_code() << ": " << status.error_message()
                 << std::endl;
-      return -1;
+      return -2;
     }
   }
   
-  int NFSPROC_SETATTR(const char *path, size_t size) {
+  int NFSPROC_SETATTR(const char *c_path, size_t size) {
+    if (fh_map.find(std::string(c_path)) == fh_map.end()) {
+      return -1;
+    }
+    const char *path = fh_map[std::string(c_path)].c_str();
     // Data we are sending to the server.
     SETATTRargs setAttrArgs;
     setAttrArgs.mutable_object()->set_data(path);
@@ -137,7 +155,11 @@ class NFSClient {
 
   // Assambles the client's payload, sends it and presents the response back
   // from the server.
-  int NFSPROC_READ(const char *path, char *buf, size_t buf_size, size_t offset) {
+  int NFSPROC_READ(const char *c_path, char *buf, size_t buf_size, size_t offset) {
+    if (fh_map.find(std::string(c_path)) == fh_map.end()) {
+      return -1;
+    }
+    const char *path = fh_map[std::string(c_path)].c_str();
     // Data we are sending to the server.
     READargs readArgs;
     readArgs.mutable_file()->set_data(path);
@@ -170,7 +192,11 @@ class NFSClient {
     }
   }
 
-  int NFSPROC_WRITE(const char *path, const char *buf, size_t buf_size, size_t offset, bool isUnstable = true) {
+  int NFSPROC_WRITE(const char *c_path, const char *buf, size_t buf_size, size_t offset, bool isUnstable = true) {
+    if (fh_map.find(std::string(c_path)) == fh_map.end()) {
+      return -1;
+    }
+    const char *path = fh_map[std::string(c_path)].c_str();
     // Data we are sending to the server.
     WRITEargs writeArgs;
     writeArgs.mutable_file()->set_data(path);
@@ -218,7 +244,11 @@ class NFSClient {
   }
 
  int NFSPROC_MKDIR(const char *path, mode_t mode) {
-    // Data we are sending to the server.
+   /*if (fh_map.find(std::string(c_path)) == fh_map.end()) {
+      return -1;
+    }
+    const char *path = fh_map[std::string(c_path)].c_str();
+    // Data we are sending to the server.*/
     MKDIRargs mkdirArgs;
     mkdirArgs.mutable_where()->mutable_dir()->set_data(path);
     mkdirArgs.mutable_attributes()->mutable_mode()->set_mode(mode);
@@ -246,7 +276,11 @@ class NFSClient {
     }
   }
 
- int NFSPROC_RMDIR(const char *path) {
+ int NFSPROC_RMDIR(const char *c_path) {
+    if (fh_map.find(std::string(c_path)) == fh_map.end()) {
+      return -1;
+    }
+    const char *path = fh_map[std::string(c_path)].c_str();
     // Data we are sending to the server.
     RMDIRargs rmdirArgs;
     rmdirArgs.mutable_object()->mutable_dir()->set_data(path);
@@ -275,6 +309,10 @@ class NFSClient {
   }
 
  int NFSPROC_CREATE(const char *path, mode_t mode) {
+    /*if (fh_map.find(std::string(c_path)) == fh_map.end()) {
+      return -1;
+    }
+    const char *path = fh_map[std::string(c_path)].c_str();*/
     // Data we are sending to the server.
     CREATEargs createArgs;
     createArgs.mutable_where()->mutable_dir()->set_data(path);
@@ -302,7 +340,11 @@ class NFSClient {
     }
   }
 
- int NFSPROC_REMOVE(const char *path) {
+ int NFSPROC_REMOVE(const char *c_path) {
+    if (fh_map.find(std::string(c_path)) == fh_map.end()) {
+      return -1;
+    }
+    const char *path = fh_map[std::string(c_path)].c_str();
     // Data we are sending to the server.
     REMOVEargs removeArgs;
     removeArgs.mutable_object()->mutable_dir()->set_data(path);
@@ -331,7 +373,11 @@ class NFSClient {
     }
   }
 
-  int NFSPROC_COMMIT(const char *path) {
+  int NFSPROC_COMMIT(const char *c_path) {
+    if (fh_map.find(std::string(c_path)) == fh_map.end()) {
+      return -1;
+    }
+    const char *path = fh_map[std::string(c_path)].c_str();
     // Data we are sending to the server.
     COMMITargs commitArgs;
     commitArgs.mutable_file()->set_data(path);
@@ -366,6 +412,39 @@ class NFSClient {
     }
   }
  
+
+ int NFSPROC_LOOKUP(const char *path) {
+    // Data we are sending to the server.
+    LOOKUPargs lookupArgs;
+    lookupArgs.mutable_what()->mutable_dir()->set_data(path);
+    
+    // Container for the data we expect from the server.
+    LOOKUPres lookupRes;
+
+    // Context for the client. It could be used to convey extra information to
+    // the server and/or tweak certain RPC behaviors.
+    ClientContext context;
+    //std::cout << "before rmdir rpc\n";
+    // The actual RPC.
+    Status status = stub_->NFSPROC_LOOKUP(&context, lookupArgs, &lookupRes);
+    //std::cout << "after rmdir rpc" << status.ok() << "  " << rmdirRes.has_resok() << "\n";
+    // Act upon its status.
+    
+    if (status.ok() && lookupRes.has_resok()) {
+      //std::cout << "going to return zero\n";
+      std::string key(path);
+      std::string value = lookupRes.resok().object().data();
+      fh_map.insert(make_pair(key, value));
+      //printf("key = %s, value = %s\n", key.c_str(), value.c_str());
+      return 0;
+    } else {
+	std::cout << "non zero\n";
+      std::cout << status.error_code() << ": " << status.error_message()
+                << std::endl;
+      return -1;
+    }
+  }
+
   ClientContext* getClientContext() {
     std::unique_ptr<ClientContext> client_context(new ClientContext);
     std::chrono::system_clock::time_point deadline = 
@@ -474,7 +553,7 @@ int remote_rmdir(const char *path) {
 
 int remote_open(const char *path, mode_t mode) {
   std::unique_ptr<NFSClient> nfs_client(getNFSClient());
-  int res = 0; // nfs_client->NFSPROC_LOOKUP(path, mode);
+  int res = nfs_client->NFSPROC_LOOKUP(path);
   return res;
 }
 
